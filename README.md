@@ -193,6 +193,9 @@ Once created, invoke the generated Skill with `/{character}-{slug}`.
 | `/{character}-{slug}-persona` | Persona only |
 | `python3 tools/skill_writer.py --action list ...` | List generated Skills across all three families |
 | `python3 tools/version_manager.py --action rollback ...` | Roll back a Skill version |
+| `python3 tools/skill_exporter.py export --character ...` | Package a Skill for sharing |
+| `python3 tools/skill_exporter.py import <file>` | Install a shared Skill package |
+| `python3 tools/skill_exporter.py inspect <file>` | Preview a Skill package contents |
 
 ### 🔬 Celebrity Research Toolchain
 
@@ -332,6 +335,7 @@ dot-skill/
 │   │   └── quality_check.py        #     quality check
 │   ├── install_*_skill.py          #   [shared] multi-host one-shot installers
 │   ├── skill_writer.py             #   [shared] skill file management
+│   ├── skill_exporter.py           #   [shared] skill export/import packaging
 │   └── version_manager.py          #   [shared] version archive & rollback
 ├── skills/                         # generated Skills (gitignored)
 │   ├── colleague/                  #   colleagues
