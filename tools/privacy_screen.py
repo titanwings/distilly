@@ -54,6 +54,8 @@ KNOWN_LIMITATIONS = [
     "Images, audio, and other binary attachments are not inspected at all.",
     "A CLEAR status means no configured pattern matched. It is not a guarantee "
     "that the material contains no sensitive information.",
+    "Detected identifier values are always masked in this report, but third-party "
+    "speaker names are shown in full so you can tell who they are.",
 ]
 
 
@@ -260,11 +262,21 @@ SENSITIVE_LEXICONS: dict[str, tuple[str, tuple[str, ...]]] = {
 # loose prefix backtracks into the clock's own colon and captures a digit as the
 # speaker name.
 SPEAKER_PATTERNS = (
+    # ISO-ish timestamp, optionally followed by a comma: "2024-01-02 10:00 Alex: hi",
+    # "2024-01-02 15:15, 민준 : hi".
     re.compile(
         r"^\s*\[?\d{4}[-/.]\d{1,2}[-/.]\d{1,2}"
-        r"(?:[ T]\d{1,2}:\d{2}(?::\d{2})?)?\s*\]?\s*"
+        r"(?:[ T]\d{1,2}:\d{2}(?::\d{2})?)?\s*\]?\s*[,\-–]?\s*"
         r"([^\s:：][^:：]{0,30}?)\s*[:：]\s"
     ),
+    # KakaoTalk desktop export: "2024년 1월 2일 오후 3:15, 민준 : hi".
+    re.compile(
+        r"^\s*\d{4}년\s*\d{1,2}월\s*\d{1,2}일\s*(?:오전|오후)?\s*\d{1,2}:\d{2}\s*[,\-–]?\s*"
+        r"([^\s:：][^:：]{0,30}?)\s*[:：]\s"
+    ),
+    # Bracketed label followed by a bracketed time, as exported from KakaoTalk on
+    # iOS: "[민준] [오후 3:20] hi".
+    re.compile(r"^\s*\[([^\]\n]{1,30})\]\s*\[[^\]\n]{0,20}\]\s*\S"),
     re.compile(r"^\s*([^\s:：][^:：]{0,30}?)\s*[:：]\s"),
 )
 
@@ -337,7 +349,9 @@ def _speaker_label(line: str) -> tuple[str, int] | None:
         match = pattern.match(line)
         if not match:
             continue
-        label = match.group(1).strip()
+        # Strip separator punctuation a timestamp prefix may have left attached.
+        label = match.group(1).strip().strip(",-–·")
+        label = label.strip()
         if not label or len(label) > 30:
             return None
         if len(label.split()) > 4:
@@ -449,7 +463,12 @@ def screen_text(
                 "line": first_line,
                 "column": first_column,
                 "message_count": len(occurrences),
-                "masked_preview": mask_value(label),
+                # Shown in the clear on purpose: the user has to recognise who
+                # this is to decide whether their messages may be used. Unlike an
+                # ID number, a chat display name is not an identifier value the
+                # report would otherwise be leaking — it sits in the source file
+                # right next to this report, which never leaves the machine.
+                "speaker": label,
             }
         )
 
@@ -563,9 +582,12 @@ def format_summary(report: dict, max_examples: int = 2) -> str:
         lines.append("Examples (masked):")
         for category, items in ordered:
             for finding in items[:max_examples]:
+                if "speaker" in finding:
+                    detail = f"{finding['speaker']} ({finding['message_count']} messages)"
+                else:
+                    detail = finding["masked_preview"]
                 lines.append(
-                    f"  [{category}] {finding['source']}:{finding['line']}  "
-                    f"{finding['masked_preview']}"
+                    f"  [{category}] {finding['source']}:{finding['line']}  {detail}"
                 )
 
     lines.extend(["", "Not covered by this screen:"])

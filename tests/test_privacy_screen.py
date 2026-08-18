@@ -147,8 +147,9 @@ class ThirdPartyTest(unittest.TestCase):
         )
         third_party = [f for f in findings if f["category"] == "third_party.speaker"]
         self.assertEqual(len(third_party), 1)
-        # The name itself is masked rather than echoed.
-        self.assertNotIn("Jordan", third_party[0]["masked_preview"])
+        # The speaker name is reported in the clear so the user can identify who
+        # it is; identifier values elsewhere stay masked.
+        self.assertEqual(third_party[0]["speaker"], "Jordan")
 
     def test_timestamped_lines_capture_the_name_not_the_clock(self) -> None:
         # A loose date prefix backtracks into the clock's colon and captures a
@@ -163,8 +164,42 @@ class ThirdPartyTest(unittest.TestCase):
         findings = screen_text(transcript, target_name="Alex")
         third_party = [f for f in findings if f["category"] == "third_party.speaker"]
         self.assertEqual(len(third_party), 1)
-        self.assertEqual(third_party[0]["masked_preview"], mask_value("Jordan"))
+        self.assertEqual(third_party[0]["speaker"], "Jordan")
         self.assertEqual(third_party[0]["message_count"], 2)
+
+    def test_kakaotalk_desktop_export_format(self) -> None:
+        transcript = "\n".join(
+            [
+                "2024년 1월 2일 오후 3:15, 민준 : 오늘 시간 돼?",
+                "2024년 1월 2일 오후 3:16, 나 : 응 괜찮아",
+                "2024년 1월 2일 오후 3:17, 서연 : 나도 갈래",
+                "2024년 1월 2일 오후 3:18, 서연 : 8시에 봐",
+            ]
+        )
+        findings = screen_text(transcript, target_name="민준", known_participants=("나",))
+        third_party = [f for f in findings if f["category"] == "third_party.speaker"]
+        self.assertEqual(len(third_party), 1)
+        self.assertEqual(third_party[0]["speaker"], "서연")
+
+    def test_kakaotalk_bracketed_export_format(self) -> None:
+        transcript = "\n".join(
+            [
+                "[민준] [오후 3:20] 오늘 시간 돼?",
+                "[서연] [오후 3:21] 나도 갈래",
+                "[서연] [오후 3:22] 8시에 봐",
+            ]
+        )
+        findings = screen_text(transcript, target_name="민준")
+        third_party = [f for f in findings if f["category"] == "third_party.speaker"]
+        self.assertEqual(len(third_party), 1)
+        self.assertEqual(third_party[0]["speaker"], "서연")
+
+    def test_comma_separated_timestamp_does_not_leak_into_the_name(self) -> None:
+        transcript = "2024-01-02 15:15, Jordan : hi\n2024-01-02 15:16, Jordan : again"
+        findings = screen_text(transcript, target_name="Alex")
+        third_party = [f for f in findings if f["category"] == "third_party.speaker"]
+        self.assertEqual(len(third_party), 1)
+        self.assertEqual(third_party[0]["speaker"], "Jordan")
 
     def test_single_line_label_is_not_treated_as_a_speaker(self) -> None:
         # One "Name:" line is indistinguishable from prose, so it stays quiet.
