@@ -9,6 +9,8 @@ git checkout distilly   # product path; default published branch remains dot-ski
 python3 -m pip install -r requirements.txt
 ```
 
+This machine's clone is `/Users/zhoutianyi/project/distilly`. Product implementation reads [design/README.md](design/README.md) before code.
+
 Python 3.9+ is required.
 
 ## Daily checks
@@ -20,6 +22,7 @@ Match the check to the change. Do not default to the full suite.
 | Agent Notes or standing docs | `python3 scripts/verify_agent_notes.py` |
 | Python tools | `python3 -m compileall -q tools scripts` and the owning `tests/test_*.py` |
 | Behavior of a collector or writer | the unittest that would fail if that behavior regressed |
+| Outgoing product PR | [distilly-code-review](../.agents/skills/distilly-code-review/SKILL.md) against [process/code-review.md](process/code-review.md) |
 
 Before push, follow [.agents/skills/distilly-pre-push-checks/SKILL.md](../.agents/skills/distilly-pre-push-checks/SKILL.md).
 

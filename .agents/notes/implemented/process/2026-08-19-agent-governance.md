@@ -12,9 +12,9 @@ The `distilly` branch carries a DeepSeek-Harness-shaped governance layer, cut do
 
 - Root [AGENTS.md](../../../../AGENTS.md) holds standing product and process orders. `CLAUDE.md` is a symlink to that file.
 - [docs/AGENTS.md](../../../../docs/AGENTS.md) defines documentation tiers and one-home-per-fact placement.
-- [docs/architecture.md](../../../../docs/architecture.md) is the current product map. Cookbooks hold steps. Agent Notes hold rationale.
+- [docs/architecture.md](../../../../docs/architecture.md) is the live-tree map. The product contract is [docs/design/system-v1.md](../../../../docs/design/system-v1.md). Cookbooks hold steps. Agent Notes hold rationale.
 - Agent Notes live under `.agents/notes/{lifecycle}/{class}/` with a header and section skeleton checked by [scripts/verify_agent_notes.py](../../../../scripts/verify_agent_notes.py).
-- Skills under `.agents/skills/` describe workflows (doc placement, pre-push evidence). Contracts stay in docs so an agent that skips a skill still sees the rule.
+- Skills under `.agents/skills/` describe workflows (doc placement, pre-push evidence, PR review). Contracts stay in docs so an agent that skips a skill still sees the rule.
 - CI on `dot-skill` and `distilly` (and `main` for leftover forks) runs compile, unittest, and the note gate. Local contributors run the narrowest matching commands; they do not owe a full-matrix rehearsal.
 
 This is docs-first in the narrow sense: a non-trivial change has a note in the same PR; unbuilt work may land as `proposed/` before code; implemented notes stay present-tense with the code.

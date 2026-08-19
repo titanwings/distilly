@@ -30,7 +30,9 @@ Closes #
 
 - [ ] I read [AGENTS.md](../AGENTS.md) and [CONTRIBUTING.md](../CONTRIBUTING.md)
 - [ ] Non-trivial change includes an [Agent Note](../.agents/notes/README.md) (or this PR is mechanical / local-only)
-- [ ] Docs updated if behavior or usage changed (architecture / cookbook / SKILL.md)
+- [ ] Product change was read against [docs/design/](../docs/design/README.md) (not architecture.md alone)
+- [ ] Review followed [docs/process/code-review.md](../docs/process/code-review.md)
+- [ ] Docs updated if behavior changed (design parent + chapter, or live-tree architecture)
 - [ ] `python3 scripts/verify_agent_notes.py` passed when notes or standing docs changed
 - [ ] No secrets, tokens, or personal data committed
 - [ ] New dependencies added to `requirements.txt` (if any)

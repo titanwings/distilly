@@ -1,14 +1,42 @@
 # Architecture
 
-This branch is the distilly product path on top of the published `dot-skill` tree. The live engine still writes colleague-family artifacts (`work.md`, `persona.md`, `SKILL.md`). The design below is the contract new work must land on; do not extend the work/persona split.
+This file is the **live-tree map**. The published code on `distilly` still writes colleague-family artifacts (`work.md`, `persona.md`, `SKILL.md`). New work must land on the design in [design/system-v1.md](design/system-v1.md), not on that split.
 
-## What the product is
+Do not implement from this page alone. Load [design/README.md](design/README.md) and the chapter that owns the change.
 
-distilly distills existing facts into a versioned, correctable profile of a person (including `self`) and loads that profile into coding agents and bots through a thin SDK. A Claude or Codex skill is a projection, not the source of truth.
+## What exists now
 
-It lines up with EverOS's profile line (one portrait, rewritten as material arrives), not episode chat logs. Differences: many subjects, lineage, user corrections, shareable versions, default zero API key.
+- `tools/` and `prompts/` distill and install Claude-oriented skills.
+- Tests under `tests/` cover that skill writer, installers, and research helpers.
+- CI on `dot-skill` and `distilly` compiles `tools`/`scripts`, runs unittest, and checks Agent Note format.
+- `src/distilly/` and `~/.distilly/` are specified, not shipped.
 
-## Layers
+## What must be built
+
+The contract is the uncut design. Entry points:
+
+| If you are changing | Read |
+|---|---|
+| Product origin, who we remember, five faces | [design/v1/01-intent.md](design/v1/01-intent.md) |
+| A locked rule or an open item | [design/v1/04-locked-and-open.md](design/v1/04-locked-and-open.md) |
+| Layers, queues, executor split | [design/v1/05-architecture.md](design/v1/05-architecture.md) |
+| Package cut | [design/v1/06-source-tree.md](design/v1/06-source-tree.md) |
+| On-disk home | [design/v1/07-home-tree.md](design/v1/07-home-tree.md) |
+| `Distilly` / `Person` / types / MCP | [design/v1/09-sdk-spec.md](design/v1/09-sdk-spec.md) |
+| Collection | [design/v1/10-source-adapters.md](design/v1/10-source-adapters.md) |
+| Injection, three load paths, seven pitfalls | [design/v1/11-host-injection.md](design/v1/11-host-injection.md) |
+| Profile core / domain / claim | [design/v1/15-profile-layer.md](design/v1/15-profile-layer.md) |
+| Relations | [design/v1/16-relations.md](design/v1/16-relations.md) |
+| First-slice acceptance | [design/v1/20-success-path.md](design/v1/20-success-path.md) |
+| Order of work | [design/v1/21-landing-order.md](design/v1/21-landing-order.md) |
+
+## Live data flow (today)
+
+```
+materials → tools/ + prompts/ → work.md + persona.md + SKILL.md → host skills/
+```
+
+## Target data flow (design)
 
 ```
 bindings     Claude / Codex / LangGraph / Hermes / Telegram
@@ -23,57 +51,4 @@ store        ~/.distilly/   Markdown / jsonl are facts
              .index/        disposable
 ```
 
-Four callers share one engine: model MCP (few tools), host plugin (how to distill and inject), panel or marketplace (list, versions, graph), bot (one pinned Person). Do not fatten `Person` to serve the panel.
-
-## Distill executors
-
-| | Default (no key) | Explicit LLM key |
-|---|---|---|
-| Ingest, dedupe, boundary, queue | engine | engine |
-| Distill | host model via `pending` then `commit` | daemon calls LLM, same `commit` |
-| Multimodal parse | host vision or local OCR | optional multimodal key; never required |
-
-Unparsed pixels stay in `knowledge/raw/` and do not enter distill input.
-
-## Profile layer
-
-A person is a closed core, open domains, and evidenced claims. Top-level `work.md` + `persona.md` is the old colleague split and is not the target layout.
-
-Core files (empty is legal): `identity`, `voice`, `psyche`, `relations`, `boundaries`, `texture`, plus optional `timeline`. Reality comes from voice examples and texture, not job-title templates.
-
-Domains appear only when material supports them: `vocation` (how they get things done — not a coworker HR file), `craft`, `intimacy`, `kinship`, `public`. `colleague` and `celebrity` are default domain packs. The default create kind is `person`.
-
-Claims use an open dotted `facet`, `evidence`, `confidence` (support from material), and `salience` (written, not used to trim in v1). Distill writes claims first, then renders Markdown.
-
-`SKILL.md` is a projection for host discovery. `prompt()` returns the same neutral Markdown without writing a skill directory.
-
-## Relations
-
-Nodes are subjects. Edges are relations (`link` / `invalidate`), append-only, with `valid_to` on error. Unresolved names become pending mentions. v1 does not compute personality affinity. Spaces keep corpora apart (founders vs anime).
-
-## Client surface
-
-```
-d = Distilly(root="~/.distilly")
-p = d.person("wang-xing")
-p.ingest(...) / p.ingest_files(...)
-p.get() / p.prompt()
-p.correct(...)
-p.install("claude-code")
-p.link(...) / p.neighbors()
-d.pending(); d.commit(...)
-```
-
-Internal modules still split as subjects, collection, distill, versions, install, marketplace, relations. Marketplace, rollback, and promote can wait; `commit` already refuses to auto-replace when confidence drops.
-
-Three load paths: `prompt()` / `get()` for this spawn; `install(host)` for long-lived skill discovery; `export(host)` for one-to-one identity files (`SOUL.md`). Do not mix them.
-
-## Existing tree
-
-`tools/` and `prompts/` are the current distill-and-install scripts. New collection code implements `SourceAdapter` rather than another standalone `*_auto_collector.py` unless it is a thin wrapper. New host wiring implements `HostInjector`. Do not keep growing this repository as a file that only lives under `~/.claude/skills/`.
-
-## Extension points
-
-- Collection: `SourceAdapter` / `DirectAdapter` / `DelegatedAdapter`, entry point group `distilly.adapters`.
-- Injection: `HostInjector` for Claude Task, Codex instructions, SDK dynamic instructions.
-- Product verbs stay on `Distilly` and `Person`. Adapters do not appear on the root export.
+Signatures, field lists, and host pitfalls stay in the design chapters. This page only orients.

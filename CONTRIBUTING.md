@@ -2,7 +2,7 @@
 
 > English first, 中文在下方。
 
-Agents: read [AGENTS.md](AGENTS.md) first. Standing orders, documentation tiers, and Agent Notes live there — not only in this file.
+Agents: read [AGENTS.md](AGENTS.md) first. Product work reads [docs/design/system-v1.md](docs/design/system-v1.md). Review follows [docs/process/code-review.md](docs/process/code-review.md).
 
 The published default branch is `dot-skill`. Product work lands on `distilly`.
 
@@ -102,7 +102,8 @@ Don't hit live APIs in CI. Mock with `unittest.mock` or the `responses` library.
 
 ## Docs / 文档
 
-- User-facing behavior changes → update `README.md`, `SKILL.md`, and `INSTALL.md`
+- Product contract changes → update `docs/design/system-v1.md` and the matching `docs/design/v1/` chapter
+- User-facing skill behavior → update `README.md`, `SKILL.md`, and `INSTALL.md`
 - If you add a language translation of the README, also update the language nav strip in every other `docs/lang/README_*.md`
 - Prefer English for code comments; docs can be bilingual
 

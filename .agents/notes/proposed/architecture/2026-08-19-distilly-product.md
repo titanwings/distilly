@@ -8,7 +8,7 @@ Status: proposed
 
 ## Proposal
 
-Ship distilly as an independent product path on this repository (later a rename). Standing map: [docs/architecture.md](../../../../docs/architecture.md).
+Ship distilly as an independent product path on this repository (later a rename). Full contract: [docs/design/system-v1.md](../../../../docs/design/system-v1.md). Live-tree map: [docs/architecture.md](../../../../docs/architecture.md).
 
 Locked product rules (do not re-open in implementation PRs without a new note):
 
@@ -24,7 +24,7 @@ Locked product rules (do not re-open in implementation PRs without a new note):
 - Bot is a binding that pins one subject and version. It must not invent its own persona files.
 - ChatCut package layout may be copied; hosted MCP and OAuth must not. Acceptance: distill a public figure and `get` without login.
 
-Target home disk and package layout are in architecture.md. Existing `PRIMARY_ARTIFACTS` migrate into core and domains; do not keep work/persona as the top split.
+Target home disk and package layout are in design chapters [07](../../../../docs/design/v1/07-home-tree.md) and [06](../../../../docs/design/v1/06-source-tree.md). Existing `PRIMARY_ARTIFACTS` migrate into core and domains; do not keep work/persona as the top split.
 
 ## Alternatives considered
 
