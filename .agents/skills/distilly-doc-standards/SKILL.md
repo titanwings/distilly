@@ -1,0 +1,15 @@
+---
+name: distilly-doc-standards
+description: Use when writing, moving, or reviewing documentation on the distilly branch — choosing which file owns a fact, adding Agent Notes, or responding to verify_agent_notes failures.
+---
+
+# distilly documentation workflow
+
+Contracts live in [docs/AGENTS.md](../../../docs/AGENTS.md). This skill is the walk, not a second standard.
+
+1. Name the document's subject and its direct children. Keep full detail only for the subject.
+2. Choose tutorial or reference. Split mixed forms.
+3. Place rationale in an Agent Note, steps in a cookbook, the current map in architecture.md, and standing orders in root AGENTS.md.
+4. Search `.agents/notes/` before adding a note. Update the owner or cross-link.
+5. Run `python3 scripts/verify_agent_notes.py` after note or standing-doc edits.
+6. Do not put change history in architecture.md. Do not put API catalogs in a note.

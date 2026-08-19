@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [dot-skill, distilly, main]
   pull_request:
-    branches: [main]
+    branches: [dot-skill, distilly, main]
 
 jobs:
   test:
@@ -30,7 +30,10 @@ jobs:
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
       - name: Compile all Python sources
-        run: python -m compileall -q tools
+        run: python -m compileall -q tools scripts
+
+      - name: Agent Note format
+        run: python scripts/verify_agent_notes.py
 
       - name: Run unit tests
         run: |

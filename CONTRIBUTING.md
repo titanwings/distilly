@@ -2,6 +2,10 @@
 
 > English first, 中文在下方。
 
+Agents: read [AGENTS.md](AGENTS.md) first. Standing orders, documentation tiers, and Agent Notes live there — not only in this file.
+
+The published default branch is `dot-skill`. Product work lands on `distilly`.
+
 Thank you for considering a contribution! This project turns colleagues (and anyone else) into AI skills, and it's only as good as its community.
 
 感谢你愿意贡献。这个项目的目标是把同事（以及任何人）蒸馏成 AI skill，社区越活跃它就越好。
@@ -33,18 +37,19 @@ Python 3.9+ is required. Optional extras (`openpyxl`, auto-collector credentials
 
 ## Branch & PR workflow / 分支和 PR 流程
 
-1. Fork the repo and create a branch from `main`:
+1. Fork the repo and create a branch from `dot-skill` (or from `distilly` for product work):
    - `feat/<short-name>` for new features
    - `fix/<short-name>` for bug fixes
    - `docs/<short-name>` for docs only
    - `chore/<short-name>` for tooling / infra
-2. Make your changes. Keep PRs focused — one concern per PR.
-3. Run tests and compile checks locally:
+2. Make your changes. Keep PRs focused — one concern per PR. Non-trivial changes add or update an [Agent Note](.agents/notes/README.md) in the same PR.
+3. Run the checks that match the diff (see [docs/development.md](docs/development.md)):
    ```bash
-   python -m compileall tools/
-   python -m unittest discover -s tests -p 'test_*.py' -v
+   python3 scripts/verify_agent_notes.py
+   python3 -m compileall -q tools scripts
+   python3 -m unittest discover -s tests -p 'test_*.py' -v
    ```
-4. Open a PR against `main`. Fill out the PR template.
+4. Open a PR against `dot-skill` or `distilly`. Fill out the PR template.
 5. CI must pass. A maintainer will review — please be patient, and feel free to ping on Discord if it's been a week.
 
 ---
