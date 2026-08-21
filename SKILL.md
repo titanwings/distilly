@@ -66,6 +66,7 @@ allowed-tools: Read, Write, Edit, Bash
 | 钉钉全自动采集 | `Bash` → `python3 tools/dingtalk_auto_collector.py` |
 | 解析邮件 .eml/.mbox | `Bash` → `python3 tools/email_parser.py` |
 | 写入/更新 Skill 文件 | `Write` / `Edit` 工具 |
+| 导出/导入 Skill 包 | `Bash` → `python3 tools/skill_exporter.py` |
 | 版本管理 | `Bash` → `python3 tools/version_manager.py` |
 | 列出已有 Skill | `Bash` → `python3 tools/skill_writer.py --action list` |
 

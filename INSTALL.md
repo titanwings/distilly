@@ -338,6 +338,10 @@ python3 tools/research/srt_to_transcript.py --help
 python3 tools/research/merge_research.py --help
 python3 tools/research/quality_check.py --help
 
+# 测试 Skill 导出/导入
+python3 tools/skill_exporter.py --help
+python3 tools/skill_exporter.py export --character colleague --slug zhangsan
+
 # 列出已有同事 Skill
 python3 tools/skill_writer.py --action list --base-dir ./skills/colleague
 ```
@@ -358,6 +362,7 @@ colleague-skill/        ← clone 到宿主的 skills/dot-skill/（例如 .claud
 │   ├── install_codex_skill.py    # Codex 本地安装器
 │   ├── install_openclaw_generated_skill.py # OpenClaw 角色 Skill 安装器
 │   ├── install_codex_generated_skill.py    # Codex 角色 Skill 安装器
+│   ├── skill_exporter.py                   # Skill 导出/导入打包工具
 │   └── research/                 # celebrity research toolchain
 ├── docs/               # 文档（PRD 等）
 │
