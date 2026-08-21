@@ -84,12 +84,27 @@ What materials can you provide for this person?
 
 If you upload files, save them under this skill’s `knowledge/` folders before analyzing them.
 For WeChat chat history import, you can try WeFlow first.
+
+Two more things I need before I read any of it:
+
+- What name or handle do they appear under in these chats?
+- What name or handle do you appear under?
+
+Anyone else who shows up under a different name is treated as a third party, and
+I'll ask you before using anything they said.
 ```
 
 Capture:
 - available source types
 - whether files were uploaded
 - which folders should receive the material
+- the target's speaker label (passed to `privacy_screen.py --target-name`)
+- the user's own speaker label (passed to `privacy_screen.py --participant`)
+
+If files were uploaded, the next step is the Step 2.5 privacy screening gate in
+`SKILL.md` — run it before any analysis and wait for the user's per-category
+decision. Do not start analysis on a `NEEDS_REVIEW` screen that has not been
+resolved.
 
 ---
 
@@ -104,6 +119,8 @@ Summary:
   Basic profile: {profile_summary}
   Closest memory: {memory_summary}
   Materials: {source_summary}
+  Their chat handle: {target_speaker_label}
+  Your chat handle: {user_speaker_label}
 
 Confirm? (confirm / edit [field])
 ```

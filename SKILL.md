@@ -65,6 +65,7 @@ allowed-tools: Read, Write, Edit, Bash
 | 飞书文档（MCP App Token） | `Bash` → `python3 tools/feishu_mcp_client.py` |
 | 钉钉全自动采集 | `Bash` → `python3 tools/dingtalk_auto_collector.py` |
 | 解析邮件 .eml/.mbox | `Bash` → `python3 tools/email_parser.py` |
+| 隐私筛查（relationship 必跑） | `Bash` → `python3 tools/privacy_screen.py` |
 | 写入/更新 Skill 文件 | `Write` / `Edit` 工具 |
 | 版本管理 | `Bash` → `python3 tools/version_manager.py` |
 | 列出已有 Skill | `Bash` → `python3 tools/skill_writer.py --action list` |
@@ -376,6 +377,52 @@ python3 tools/feishu_mcp_client.py \
 
 如果用户说"没有文件"或"跳过"，仅凭 Step 1 的手动信息生成 Skill。
 
+### Step 2.5：隐私筛查关卡（仅 relationship）
+
+`relationship` 的原材料是私人对话，里面经常混进第三方的消息、证件号、联系方式和敏感话题。
+**在进入 Step 3 分析之前，必须先跑隐私筛查，并等用户逐类确认。**
+
+1. 对已落盘的材料跑筛查：
+   ```bash
+   python3 tools/privacy_screen.py \
+     --knowledge-dir ./knowledge/{slug} \
+     --target-name "{对方称呼}" \
+     --participant "{用户自己的聊天昵称}"
+   ```
+   报告写入 `knowledge/{slug}/privacy_report.json`，同时在终端打印分类汇总表。
+
+2. 把工具打印的汇总表**原样**展示给用户，包含：
+   - 每个类别的命中数量与严重级别
+   - 每类 1-2 条**已脱敏**的示例（工具已自动遮蔽，不要自己把原值贴回来）
+   - 工具输出的"未覆盖范围"清单 —— 不要省略，用户需要知道筛查漏了什么
+
+3. 逐类询问处置方式，等待用户明确回答：
+   ```
+   每个类别你想怎么处理？
+
+     [保留]  这部分对刻画这个人是必要的，照常进入分析
+     [脱敏]  保留语义但抹掉具体值（分析时忽略原值）
+     [排除]  这个文件/这段内容完全不进入分析
+
+   逐类告诉我，或者说"全部排除"。
+   ```
+
+4. **状态为 `NEEDS_REVIEW` 且用户尚未逐类给出处置意见时，不允许进入 Step 3。**
+   没有回答不等于同意；沉默、"随便"、"你看着办"都要再确认一次。
+
+5. 用户选择"脱敏"或"排除"的内容，在后续分析中要真正不使用：
+   - 排除的文件不要读进上下文
+   - 脱敏的字段不要写进 `persona.md` / `work.md`，也不要作为"记忆细节"复述
+
+6. `third_party.speaker` 命中意味着材料里有第三方在说话。默认**排除**第三方发言，
+   除非用户明确说这些内容对刻画对方是必要的。
+
+7. `privacy_report.json` 只留在本地，属于敏感文件：不要复制进生成的 Skill 目录，
+   分享或发布时也不要带上。
+
+> 筛查是提示，不是许可。工具报 `CLEAR` 只代表"配置的规则没有命中"，
+> 不代表材料里没有敏感信息；该问用户的仍然要问。
+
 ### Step 3：分析原材料
 
 先根据 character family 解析本次的执行矩阵：
@@ -636,6 +683,42 @@ Persona 摘要：
 
 告知用户时，文件位置必须按当前 family 返回，不要默认写成 colleague。
 
+### Step 5.5：落盘 / 安装 / 分享关卡（仅 relationship）
+
+`relationship` Skill 承载的是私人关系材料，因此它的每一次"扩散"都要单独确认。
+以下三个动作各自需要一次**独立的**明确同意，不能用同一句"确认"一次性覆盖：
+
+1. **写入磁盘**（Step 4 的预览确认）
+   - 用户的回答是最终依据，不是走过场：说"再看看""等等"就停在预览，不要落盘
+   - 只有明确的肯定答复才继续
+
+2. **安装到宿主**（`--install-claude-skill` / `--install-openclaw-skill` / `--install-codex-skill`
+   / 放进 `~/.dsh/skills/`）
+   ```
+   要把这个 Skill 安装到宿主吗？
+
+   安装后，这个宿主里的任何会话都可以直接调用它，
+   也就是说这段关系材料会脱离当前对话的范围。
+
+   [安装到 {宿主}] / [先不安装，只留在本地目录]
+   ```
+   - 默认**不安装**。用户没提安装，就不要主动加 `--install-*` 参数
+
+3. **分享 / 发布到 gallery**
+   ```
+   ⚠️ 这是一个 relationship Skill，里面包含私人对话提炼出的内容。
+
+   发布到 gallery 意味着任何人都能看到并安装它。
+   对方本人是否知情并同意公开？
+
+   [确认发布] / [不发布]
+   ```
+   - 默认**不发布**，且必须是单独的一次确认——Step 4 的"确认生成"不构成发布同意
+   - 用户没有明确说要公开分享时，不要提议发布，也不要生成 gallery 提交内容
+   - 发布前确认 `knowledge/` 与 `privacy_report.json` 没有被打包进去
+
+> 三个关卡的共同原则：**沉默不是同意**。用户没回答就停下来问，不要替他做决定。
+
 ---
 
 ## 进化模式：追加文件
@@ -643,6 +726,8 @@ Persona 摘要：
 用户提供新文件或文本时：
 
 1. 按 Step 2 的方式读取新内容
+   - 如果当前是 `relationship`，新材料同样要过 Step 2.5 的隐私筛查关卡，
+     并等用户逐类确认后再继续；不要因为"只是追加"就跳过
 2. 根据当前 family 解析 base dir
 3. 用 `Read` 读取现有 `{resolved_base_dir}/{slug}/work.md` 和 `persona.md`
 4. 使用当前 family 对应的 merger prompt 分析增量内容
@@ -675,6 +760,21 @@ Persona 摘要：
 
 1. 参考 `prompts/correction_handler.md` 识别纠正内容
 2. 判断属于 Work（技术/流程）还是 Persona（性格/沟通）
+2.5. **如果当前是 `relationship`，且这条纠正会改动 `persona.md`：先展示、后应用。**
+   - 把准备写入的内容原样摊开给用户看，再等一次明确同意：
+     ```
+     这条纠正我准备这样写进 persona.md：
+
+       场景：{scene}
+       原来的行为：{wrong}
+       改成：{correct}
+
+     确认写入？(确认 / 改一下 / 算了)
+     ```
+   - 用户确认前**不要**调用 `skill_writer.py`
+   - 一次提出多条纠正时，逐条展示逐条确认，不要打包成一次"全部确认"
+   - 纠正会改变这个 Skill 对一个真实的人的刻画，写错了就是替对方说了他没说过的话——
+     所以这里宁可多问一次
 3. 如果属于 Work：
    - 生成 `/tmp/dot_skill_{slug}_work_patch.md`
    - patch 必须是可替换的 `##` section，不要直接手改最终文件
@@ -792,6 +892,7 @@ This Skill runs in any compatible host that can read local files and execute Bas
 | Feishu docs (MCP App Token) | `Bash` → `python3 tools/feishu_mcp_client.py` |
 | DingTalk auto-collect | `Bash` → `python3 tools/dingtalk_auto_collector.py` |
 | Parse email .eml/.mbox | `Bash` → `python3 tools/email_parser.py` |
+| Privacy screening (required for relationship) | `Bash` → `python3 tools/privacy_screen.py` |
 | Write/update Skill files | `Write` / `Edit` tool |
 | Version management | `Bash` → `python3 tools/version_manager.py` |
 | List existing Skills | `Bash` → `python3 tools/skill_writer.py --action list` |
@@ -1103,6 +1204,60 @@ User-pasted content is used directly as text material. No tools needed.
 
 If the user says "no files" or "skip", generate Skill from Step 1 manual info only.
 
+### Step 2.5: Privacy Screening Gate (relationship only)
+
+`relationship` material is private conversation. It routinely carries third-party
+messages, ID numbers, contact details, and sensitive topics.
+**Run the privacy screen and get per-category confirmation before Step 3.**
+
+1. Screen the material that has been written to disk:
+   ```bash
+   python3 tools/privacy_screen.py \
+     --knowledge-dir ./knowledge/{slug} \
+     --target-name "{name of the person being distilled}" \
+     --participant "{the user's own chat handle}"
+   ```
+   The report is written to `knowledge/{slug}/privacy_report.json`, and a category
+   summary table is printed to the terminal.
+
+2. Show the printed summary to the user **as-is**, including:
+   - the hit count and severity for each category
+   - one or two **already-masked** examples per category (the tool masks them; never
+     paste the raw values back in)
+   - the "not covered by this screen" list the tool prints — do not omit it, the user
+     needs to know what the screen misses
+
+3. Ask how to handle each flagged category and wait for an explicit answer:
+   ```
+   How do you want to handle each category?
+
+     [keep]     necessary for capturing this person, analyze as normal
+     [redact]   keep the meaning, drop the specific values
+     [exclude]  this file / passage does not enter analysis at all
+
+   Tell me per category, or say "exclude everything".
+   ```
+
+4. **While the status is `NEEDS_REVIEW` and the user has not given a per-category
+   decision, do not enter Step 3.** A non-answer is not consent: silence, "whatever",
+   and "you decide" all mean ask again.
+
+5. Honour "redact" and "exclude" for real in the analysis that follows:
+   - do not read excluded files into context
+   - do not write redacted values into `persona.md` / `work.md`, and do not recite them
+     back as "remembered details"
+
+6. A `third_party.speaker` hit means someone else is talking in the material. **Exclude
+   third-party messages by default**, unless the user explicitly says they are necessary
+   for capturing the target person.
+
+7. `privacy_report.json` stays local and is itself sensitive: never copy it into the
+   generated skill directory, and never include it when sharing or publishing.
+
+> The screen is a prompt for judgement, not a permission slip. A `CLEAR` status only
+> means no configured pattern matched — it does not mean the material is free of
+> sensitive information. Ask the user anyway.
+
 ### Step 3: Analyze Source Material
 
 First resolve the execution matrix for the selected character family:
@@ -1364,6 +1519,49 @@ After user confirmation, do not hand-build a `skills/colleague/{slug}`-style tre
 
 When reporting success, return the correct family-specific location instead of assuming colleague storage.
 
+### Step 5.5: Write / Install / Share Gates (relationship only)
+
+A `relationship` skill carries private relationship material, so every step that spreads
+it further needs its own confirmation. These three actions each require a **separate**
+explicit yes — one blanket "confirm" does not cover all of them:
+
+1. **Writing to disk** (the Step 4 preview confirmation)
+   - The user's answer is authoritative, not a formality: "let me look again" or "hold on"
+     means stop at the preview and do not write
+   - Only an explicit yes continues
+
+2. **Installing into a host** (`--install-claude-skill` / `--install-openclaw-skill` /
+   `--install-codex-skill`, or dropping it into `~/.dsh/skills/`)
+   ```
+   Install this skill into a host?
+
+   Once installed, any session in that host can invoke it directly — this relationship
+   material leaves the scope of the current conversation.
+
+   [install into {host}] / [don't install, keep it in the local directory]
+   ```
+   - Default to **not installing**. If the user did not ask for installation, do not add
+     an `--install-*` flag on your own
+
+3. **Sharing / publishing to the gallery**
+   ```
+   ⚠️ This is a relationship skill. It contains material distilled from private
+   conversations.
+
+   Publishing to the gallery means anyone can see and install it.
+   Does the other person know about this and agree to it being public?
+
+   [confirm publish] / [do not publish]
+   ```
+   - Default to **not publishing**, and require a distinct confirmation — the Step 4
+     "confirm generation" answer is not consent to publish
+   - Unless the user has explicitly asked to share publicly, do not propose publishing and
+     do not prepare gallery submission content
+   - Before publishing, verify that `knowledge/` and `privacy_report.json` are not bundled
+
+> The shared rule across all three gates: **silence is not consent.** If the user has not
+> answered, stop and ask rather than deciding for them.
+
 ---
 
 ## Evolution Mode: Append Files
@@ -1371,6 +1569,9 @@ When reporting success, return the correct family-specific location instead of a
 When user provides new files or text:
 
 1. Read new content using Step 2 methods
+   - If the current family is `relationship`, the new material goes through the Step 2.5
+     privacy screening gate as well, with per-category confirmation before continuing.
+     Do not skip it just because this is "only an append"
 2. Resolve the base dir for the current family
 3. `Read` existing `{resolved_base_dir}/{slug}/work.md` and `persona.md`
 4. Use the family-specific merger prompt for incremental analysis
@@ -1403,6 +1604,23 @@ When user expresses "that's wrong" / "he should be":
 
 1. Refer to `prompts/correction_handler.md` to identify correction content
 2. Determine if it belongs to Work (technical/workflow) or Persona (personality/communication)
+2.5. **If the current family is `relationship` and the correction touches `persona.md`,
+   show it before applying it.**
+   - Lay out exactly what you are about to write, then wait for an explicit yes:
+     ```
+     Here is how I'd write this correction into persona.md:
+
+       Scene:    {scene}
+       Was:      {wrong}
+       Becomes:  {correct}
+
+     Write it? (confirm / adjust / cancel)
+     ```
+   - Do **not** call `skill_writer.py` before the user confirms
+   - When several corrections arrive at once, show and confirm them one at a time rather
+     than bundling them into a single "confirm all"
+   - A correction changes how this skill portrays a real person; getting it wrong puts
+     words in their mouth. Ask the extra question here
 3. If it belongs to Work:
    - Generate `/tmp/dot_skill_{slug}_work_patch.md`
    - The patch must be one or more replaceable `##` sections

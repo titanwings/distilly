@@ -360,6 +360,8 @@ dot-skill/
 
 - **colleague** Feishu auto-collection: requires adding the App bot to relevant group chats
 - **relationship**: longer time spans are better; material covering both conflict and repair is ideal
+  - Before any analysis runs, `tools/privacy_screen.py` scans the collected material for ID numbers, contact details, third-party speakers, and sensitive topics, then stops and asks you what to keep / redact / exclude. It never edits or deletes your files, and it prints what it does **not** cover — a `CLEAR` result means "no configured pattern matched", not "nothing sensitive is in here"
+  - Writing to disk, installing into a host, and publishing to the gallery are three separate confirmations. Nothing is installed or published unless you say so
 - **celebrity**: avoid feeding only second-hand interpretations
 - This is still a demo version — please file issues if you find bugs!
 
