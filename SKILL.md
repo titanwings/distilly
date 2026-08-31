@@ -616,7 +616,8 @@ Persona 摘要：
    - `profile`
    - `tags`
    - `knowledge_sources`
-4. 然后调用：
+4. 如果 `{resolved_base_dir}/{slug}` 已经存在，停止创建并转入“进化模式”。writer 会拒绝覆盖已有 Skill；不要删除旧目录后重试。只有当上一条创建命令明确报告目录可能不完整时，才先检查该目录；确认它就是要丢弃的失败产物后，可以手动删除并重试创建。
+5. 然后调用：
    ```bash
    python3 "{distilly_skill_root}/tools/skill_writer.py" \
      --action create \
@@ -629,7 +630,7 @@ Persona 摘要：
      --persona /tmp/distilly_{slug}_persona.md \
      --base-dir {resolved_base_dir}
    ```
-5. 该命令会统一生成：
+6. 该命令会统一生成：
    - `SKILL.md`
    - `work.md`
    - `persona.md`
@@ -648,11 +649,11 @@ Persona 摘要：
      - OpenCode：运行 `python3 "{distilly_skill_root}/tools/install_generated_skill.py" --skill-dir "{resolved_base_dir}/{slug}" --host opencode --force`；项目级安装追加 `--skills-dir .opencode/skills`
      - 统一安装器只写入自包含的 `SKILL.md` 和安装元数据，会在安装副本中规范旧版 frontmatter；不要手动复制整个生成目录，其中可能包含私有原始材料
      - Claude Code on Windows：可再追加 `--install-claude-command-shim`
-6. 如果当前是 `celebrity`，创建完成后必须再跑一次质量检查：
+7. 如果当前是 `celebrity`，创建完成后必须再跑一次质量检查：
    ```bash
    python3 "{distilly_skill_root}/tools/research/quality_check.py" "{resolved_base_dir}/{slug}/SKILL.md" --profile {research_profile}
    ```
-7. 如果 `celebrity` 的质量检查仍然提示 `source_grounding` 失败：
+8. 如果 `celebrity` 的质量检查仍然提示 `source_grounding` 失败：
    - 可以补写诚实的来源说明和局限说明
    - 但只有在拿到真实、具体、可追溯的外部来源时，才能补充 URL
    - **不要**用站点首页、topic 页、搜索页、个人空间首页等泛化链接来“刷过”检查
@@ -1370,7 +1371,8 @@ After user confirmation, do not hand-build a `skills/colleague/{slug}`-style tre
    - `profile`
    - `tags`
    - `knowledge_sources`
-4. Then call:
+4. If `{resolved_base_dir}/{slug}` already exists, stop creation and switch to Evolution Mode. The writer refuses to overwrite an existing Skill; do not delete the old directory and retry. Only when the previous create command explicitly reports that the directory may be incomplete should you inspect it, remove it after confirming it is the failed create you intend to discard, and retry creation.
+5. Then call:
    ```bash
    python3 "{distilly_skill_root}/tools/skill_writer.py" \
      --action create \
@@ -1383,7 +1385,7 @@ After user confirmation, do not hand-build a `skills/colleague/{slug}`-style tre
      --persona /tmp/distilly_{slug}_persona.md \
      --base-dir {resolved_base_dir}
    ```
-5. This command will generate:
+6. This command will generate:
    - `SKILL.md`
    - `work.md`
    - `persona.md`
@@ -1402,11 +1404,11 @@ After user confirmation, do not hand-build a `skills/colleague/{slug}`-style tre
      - OpenCode: run `python3 "{distilly_skill_root}/tools/install_generated_skill.py" --skill-dir "{resolved_base_dir}/{slug}" --host opencode --force`; append `--skills-dir .opencode/skills` for a project install
      - The shared installer writes only the self-contained `SKILL.md` and install metadata and normalizes legacy frontmatter in the installed copy. Do not manually copy the whole generated directory; it may contain private source material
      - Claude Code on Windows: optionally add `--install-claude-command-shim`
-6. If the current family is `celebrity`, run a quality check after creation:
+7. If the current family is `celebrity`, run a quality check after creation:
    ```bash
    python3 "{distilly_skill_root}/tools/research/quality_check.py" "{resolved_base_dir}/{slug}/SKILL.md" --profile {research_profile}
    ```
-7. If `source_grounding` still fails for a `celebrity` skill:
+8. If `source_grounding` still fails for a `celebrity` skill:
    - you may add honest limitation notes and a grounded source summary
    - only add URLs when they are real, specific, and traceable sources
    - **never** use site roots, topic pages, search pages, or other generic links as fake grounding
