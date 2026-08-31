@@ -80,6 +80,14 @@ The installer writes only the self-contained `SKILL.md` and
 generated directory, and it normalizes legacy underscore frontmatter only in
 the installed copy.
 
+If the target `{character}/{slug}` already exists, creation stops without
+changing its files. Use Evolution Mode to update an existing Skill, or pass
+`--action update` when using the CLI. Do not delete the old directory and
+create it again. The exception is when the command explicitly reports that
+this create failed and the directory may be incomplete. Inspect that directory
+first. Remove it only after confirming it is the failed create you intend to
+discard, then retry `create`.
+
 On Windows, use the dedicated Claude Code installer when a command shim is
 needed:
 

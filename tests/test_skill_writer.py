@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import io
 import json
 import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 TOOLS_DIR = Path(__file__).resolve().parents[1] / "tools"
@@ -40,6 +42,182 @@ class SkillWriterTest(unittest.TestCase):
                     "Persona body",
                 )
             self.assertFalse((root / "skills" / "escape").exists())
+
+    def test_failed_create_never_deletes_a_replacement_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            base_dir = Path(tmp_dir) / "skills" / "colleague"
+            skill_dir = base_dir / "contended-after-reservation"
+            displaced_dir = base_dir / "incomplete-first-creator"
+
+            def replace_then_fail(
+                output_dir: Path,
+                _meta: dict,
+                _work_content: str,
+                _persona_content: str,
+            ) -> None:
+                self.assertEqual(output_dir, skill_dir)
+                (output_dir / "partial.txt").write_text("partial", encoding="utf-8")
+                output_dir.rename(displaced_dir)
+                output_dir.mkdir()
+                (output_dir / "publisher.txt").write_text("competitor", encoding="utf-8")
+                raise OSError("simulated write failure")
+
+            with mock.patch.object(
+                skill_writer,
+                "write_artifacts",
+                side_effect=replace_then_fail,
+            ):
+                with self.assertRaisesRegex(
+                    skill_writer.IncompleteSkillCreateError,
+                    "simulated write failure",
+                ):
+                    skill_writer.create_skill(
+                        base_dir,
+                        "contended-after-reservation",
+                        {"name": "Contended After Reservation"},
+                        "Work body",
+                        "Persona body",
+                    )
+
+            self.assertEqual(
+                (skill_dir / "publisher.txt").read_text(encoding="utf-8"),
+                "competitor",
+            )
+            self.assertEqual(
+                (displaced_dir / "partial.txt").read_text(encoding="utf-8"),
+                "partial",
+            )
+
+    def test_create_skill_preserves_a_competing_target(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            base_dir = Path(tmp_dir) / "skills" / "colleague"
+            skill_dir = base_dir / "contended"
+            original_mkdir = Path.mkdir
+
+            def competing_reservation(
+                path: Path,
+                mode: int = 0o777,
+                parents: bool = False,
+                exist_ok: bool = False,
+            ) -> None:
+                if path != skill_dir:
+                    original_mkdir(
+                        path,
+                        mode=mode,
+                        parents=parents,
+                        exist_ok=exist_ok,
+                    )
+                    return
+                original_mkdir(
+                    path,
+                    mode=mode,
+                    parents=parents,
+                    exist_ok=exist_ok,
+                )
+                (skill_dir / "publisher.txt").write_text("competitor", encoding="utf-8")
+                raise FileExistsError("simulated competing reservation")
+
+            with mock.patch.object(
+                Path,
+                "mkdir",
+                new=competing_reservation,
+            ):
+                with self.assertRaisesRegex(FileExistsError, "create target already exists"):
+                    skill_writer.create_skill(
+                        base_dir,
+                        "contended",
+                        {"name": "Contended"},
+                        "Work body",
+                        "Persona body",
+                    )
+
+            self.assertEqual(
+                (skill_dir / "publisher.txt").read_text(encoding="utf-8"),
+                "competitor",
+            )
+            self.assertEqual(
+                [path.relative_to(skill_dir) for path in skill_dir.rglob("*")],
+                [Path("publisher.txt")],
+            )
+            self.assertEqual(list(base_dir.iterdir()), [skill_dir])
+
+    def test_create_skill_rejects_a_dangling_symlink_target(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            base_dir = Path(tmp_dir) / "skills" / "colleague"
+            base_dir.mkdir(parents=True)
+            skill_dir = base_dir / "existing-link"
+            link_target = base_dir / "missing-target"
+            skill_dir.symlink_to(link_target, target_is_directory=True)
+
+            with self.assertRaisesRegex(FileExistsError, "--action update"):
+                skill_writer.create_skill(
+                    base_dir,
+                    "existing-link",
+                    {"name": "Existing Link"},
+                    "Work body",
+                    "Persona body",
+                )
+
+            self.assertTrue(skill_dir.is_symlink())
+            self.assertEqual(skill_dir.readlink(), link_target)
+
+    def test_cli_reports_post_reservation_failures_and_supports_recovery(self) -> None:
+        failures = (
+            PermissionError("simulated permission failure"),
+            ValueError("simulated metadata failure"),
+        )
+
+        for failure in failures:
+            with self.subTest(failure=type(failure).__name__):
+                with tempfile.TemporaryDirectory() as tmp_dir:
+                    base_dir = Path(tmp_dir) / "skills" / "colleague"
+                    argv = [
+                        "skill_writer.py",
+                        "--action",
+                        "create",
+                        "--slug",
+                        "write-failure",
+                        "--name",
+                        "Write Failure",
+                        "--base-dir",
+                        str(base_dir),
+                    ]
+
+                    with mock.patch.object(skill_writer.sys, "argv", argv):
+                        with mock.patch.object(
+                            skill_writer,
+                            "write_artifacts",
+                            side_effect=failure,
+                        ):
+                            with mock.patch.object(
+                                skill_writer.sys,
+                                "stderr",
+                                new_callable=io.StringIO,
+                            ) as stderr:
+                                with self.assertRaises(SystemExit) as context:
+                                    skill_writer.main()
+
+                    self.assertEqual(context.exception.code, 1)
+                    self.assertTrue(stderr.getvalue().startswith("error: create failed"))
+                    self.assertIn("the directory may be incomplete", stderr.getvalue())
+                    self.assertIn(str(base_dir / "write-failure"), stderr.getvalue())
+                    self.assertIn(
+                        "remove it only if it is the failed create",
+                        stderr.getvalue(),
+                    )
+                    self.assertNotIn("Traceback", stderr.getvalue())
+                    incomplete_dir = base_dir / "write-failure"
+                    self.assertTrue(incomplete_dir.is_dir())
+
+                    skill_writer.shutil.rmtree(incomplete_dir)
+                    with mock.patch.object(skill_writer.sys, "argv", argv):
+                        with mock.patch.object(
+                            skill_writer.sys,
+                            "stdout",
+                            new_callable=io.StringIO,
+                        ):
+                            skill_writer.main()
+                    self.assertTrue((incomplete_dir / "meta.json").is_file())
 
     def test_legacy_path_segments_are_windows_safe(self) -> None:
         self.assertEqual(validate_path_segment("Zadie Smith"), "Zadie Smith")
