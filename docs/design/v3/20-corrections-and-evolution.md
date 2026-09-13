@@ -20,7 +20,7 @@ Correction 是完整产品 mutation，不是 ingest + commit 两次提交。它�
 2. 根据可信 actor 生成 direct_user 或 relayed provenance；正文通过通用 BlobStore put，MaterialId 仍绑定 request-stable correction source identity 与 provenance。
 3. 从 current 或 exact active candidate 读取内容基线，应用一条 full-body user_asserted replacement claim；explicit targets 全部 supersededBy 同一 replacement。missing/already-superseded/duplicate/cycle invalid_input。
 4. 以 transaction-time current 做 QualityGate before；candidate 只作为内容 baseline。supersedes 产生 correction_conflict，非 user actor 产生 relayed_correction，其余 mechanical reasons 与普通 commit 共用。
-5. 派生 generation+1、完整 material membership、fresh no-lease pending、VersionId/Profile/prompt、current 或 suspended disposition；替代 candidate 时记录 derivedFromCandidateVersionId 并把旧 candidate 标 rejected。
+5. 派生 generation+1、完整 subject material membership、fresh no-lease pending、VersionId/Profile/prompt、current 或 suspended disposition。correction version 的 membership 只包含选定内容基线（current 或 exact active candidate）的 membership 与本次 correction material；其 materialSetHash、materialCount 和 quality 均由该版本集合派生。仅已 ingest、尚未进入内容基线的 research 继续留在 subject 集合中，pending 相对新的 current version membership 计算差集，不得因 correction 或后续 promote 被视为已蒸馏；只有无未处理材料时才允许 zero-delta pending。替代 candidate 时记录 derivedFromCandidateVersionId 并把旧 candidate 标 rejected。
 6. 在一个 SQLite transaction 内重新校验 RequestId、subject revision、current/candidate 与 targets，然后提交 correction material reference、claim/evidence/version/membership、pointer/status、pending、stable result 与 events。
 
 transaction commit 是唯一产品提交点；projection 在 LSN 后追赶。没有 CorrectionTransactionRecord、correction/version staging、`.deleting`、target-first recovery 或 correction-specific cleanup。precondition/validation failure 使 transaction 不发生或 rollback；已 put 但未引用的 blob 由通用 GC 处理。
