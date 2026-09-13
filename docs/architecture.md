@@ -99,3 +99,5 @@ authority     SQLite/WAL metadata + immutable blobs   LSN projections / exports 
 ```
 
 Signatures, field lists, and host pitfalls stay in the design chapters. This page only orients.
+
+The Preview CLI also provides explicit `recover <job-id> --output <new-directory>` file recovery for briefings above a host transport limit. It exports the complete briefing within existing engine limits, binds a manually supplied patch to that exact export and lease, and uses the normal evidence-checked commit path. See [INSTALL.md](../INSTALL.md#recover-a-briefing-that-exceeds-the-host-limit) for deadlines, private artifacts, and failure recovery. This does not change verified host capacity.

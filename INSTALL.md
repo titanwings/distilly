@@ -41,6 +41,38 @@ node packages/cli/lib/bin.js install subject_<32 lowercase hex characters> --hos
 
 Replace the subject id with the exact value returned by Distilly. Profile installation writes only the self-contained Profile and its digest manifest.
 
+## Recover a briefing that exceeds the host limit
+
+If `distilly_pending` returns `briefing_too_large`, the research is still stored and pending. Raising the model context setting does not change a verified MCP transport limit. For a complete briefing within the engine's limits, use the explicit local file workflow from a checkout containing this command:
+
+```bash
+node packages/cli/lib/bin.js recover job_<32 lowercase hex characters> --output /absolute/path/to/new-recovery-directory
+```
+
+Use the exact job ID from `distilly_pending` with `action: "list"`. Run the command with the same home directory as the installed Plugin so it opens the same `~/.distilly` store. The output directory must be new, with an existing parent. It will contain private research; choose a local location you intend to use for that data.
+
+Keep the command running. It writes the complete `briefing.json`, `commit-tool-schema.json`, and `README.txt`, then waits for a response. Read the entire briefing, its instructions, evidence rules, and baseline before preparing a patch. The patch schema is the `patch` property of `commit-tool-schema.json`; the command supplies all commit identity fields itself.
+
+Write a temporary JSON file with exactly `briefingSha256` (the digest in `README.txt`) and `patch` (your DistillPatch object). Rename the finished file to `response.json` in that directory. The command checks the digest and submits the patch through the same session and lease. It does not call a model or generate a patch. An empty patch is a deliberate decision to consume the briefing without adding or changing claims; do not use one merely to clear the error.
+
+The default wait is 20 minutes. `--timeout-seconds` accepts 1 through 1500 seconds, below the 30-minute lease lifetime. Timeout, Ctrl+C, SIGTERM, malformed responses, and validation errors attempt to release the lease and leave research available for another attempt. A force-killed process leaves its lease to expire. Another session's active lease is never taken over. Retry with a new directory and a fresh briefing; an older response will not match the new digest.
+
+A successful submission writes `submission.json` and `result.json`. The result can be current or suspended for review; a suspended result still needs the normal review workflow. If the command says the commit succeeded but its result file could not be written, use the printed version and request IDs to inspect the result. Do not resubmit blindly. An unknown commit outcome requires the same inspection before retrying.
+
+This path transfers a complete briefing through local files, with a maximum of 4 MiB and 999 material references. It does not raise a host's verified MCP limit or establish that a model can read that much context. Responses are limited to 256 KiB on disk; the existing 64 KiB canonical patch limit still applies. There is no truncation, automatic splitting, or deletion of stored research. Briefings above the engine limits still fail explicitly. Recovery directories are not removed automatically.
+
+### 超出宿主限制后的本地恢复
+
+出现 `briefing_too_large` 时，调研资料仍保存在库中并等待处理。调整模型上下文不会改变已验证的 MCP 传输限制。可在包含此命令的源码构建目录中运行上面的 `recover` 命令；job ID 从 `distilly_pending` 的 `action: "list"` 结果取得。命令必须使用与 Plugin 相同的 home，才能访问同一个 `~/.distilly`。输出目录必须尚不存在，且父目录已存在；其中包含私人资料，请选择适合保存这些资料的本地位置。
+
+保持命令运行，完整阅读 `briefing.json`、证据规则和已有基线，再按 `commit-tool-schema.json` 的 `patch` 字段定义准备结果。先写临时 JSON 文件，只包含 `README.txt` 中的 `briefingSha256` 和你的 `patch`，完成后再将其重命名为 `response.json`。命令会校验摘要，并通过同一会话和租约提交。它不调用模型，也不自动生成结果。空 patch 表示明确决定处理完本次资料但不增改任何 claim，请勿仅为消除报错而提交空 patch。
+
+默认等待 20 分钟，`--timeout-seconds` 可设置为 1 至 1500 秒。超时、Ctrl+C、SIGTERM、响应格式错误或校验失败时，命令会尝试释放租约，供后续重试；强制杀死进程则需要等待租约过期。命令不会接管其他会话的有效租约。重试须使用新目录和新 briefing，旧响应无法通过摘要校验。
+
+成功提交后会保留 `submission.json` 与 `result.json`；结果若为 suspended，仍需正常审核。若提示提交成功但回执写入失败，请用输出中的版本 ID 和请求 ID 查询结果，不要直接重复提交。提交结果不明确时也应先核实。
+
+本地文件路径支持最多 4 MiB 的完整 briefing 和 999 个资料引用，不代表宿主 MCP 限制已提高，也不保证模型具备相应上下文容量。响应文件最多 256 KiB，原有 canonical patch 的 64 KiB 上限继续生效。不会裁剪、自动拆分或删除已存资料；超出引擎上限仍会明确失败。恢复目录不会自动清理。
+
 ## Remove the host integration
 
 ```bash
