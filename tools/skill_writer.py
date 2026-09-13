@@ -116,6 +116,28 @@ MAX_SLUG_LENGTH = 40
 SLUG_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
 
+class IncompleteSkillCreateError(RuntimeError):
+    """Raised when creation fails after its target directory was reserved."""
+
+
+def _existing_skill_error(target: Path) -> FileExistsError:
+    return FileExistsError(
+        f"create target already exists: {target}; "
+        "use --action update only if it is the existing Skill you intended to change"
+    )
+
+
+def _incomplete_skill_error(
+    target: Path,
+    error: Exception,
+) -> IncompleteSkillCreateError:
+    return IncompleteSkillCreateError(
+        f"create failed after reserving {target}; the directory may be incomplete. "
+        "Inspect it and remove it only if it is the failed create you intend to "
+        f"discard, then retry. Original error: {error}"
+    )
+
+
 def validate_slug(slug: str) -> str:
     """Require a safe kebab-case slug before using it in paths or skill names."""
     if len(slug) > MAX_SLUG_LENGTH or not SLUG_PATTERN.fullmatch(slug):
@@ -279,19 +301,28 @@ def create_skill(
     normalized_meta = enrich_skill_meta(meta, slug, meta.get("character"))
     preset = get_character_preset(normalized_meta["character"])
     skill_dir = base_dir / slug
-    skill_dir.mkdir(parents=True, exist_ok=True)
+    base_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        skill_dir.mkdir()
+    except FileExistsError as error:
+        raise _existing_skill_error(skill_dir) from error
 
-    (skill_dir / "versions").mkdir(exist_ok=True)
-    for relative_path in preset.get("knowledge_dirs", ("docs", "messages", "emails")):
-        (skill_dir / "knowledge" / relative_path).mkdir(parents=True, exist_ok=True)
+    try:
+        (skill_dir / "versions").mkdir()
+        for relative_path in preset.get("knowledge_dirs", ("docs", "messages", "emails")):
+            (skill_dir / "knowledge" / relative_path).mkdir(parents=True, exist_ok=True)
 
-    normalized_meta["lifecycle"]["created_at"] = normalized_meta.get("created_at", now_iso())
-    normalized_meta["lifecycle"]["updated_at"] = normalized_meta["lifecycle"]["created_at"]
-    normalized_meta["lifecycle"]["version"] = "v1"
-    normalized_meta["generation"]["corrections_count"] = normalized_meta.get("corrections_count", 0)
-    sync_legacy_fields(normalized_meta)
+        normalized_meta["lifecycle"]["created_at"] = normalized_meta.get("created_at", now_iso())
+        normalized_meta["lifecycle"]["updated_at"] = normalized_meta["lifecycle"]["created_at"]
+        normalized_meta["lifecycle"]["version"] = "v1"
+        normalized_meta["generation"]["corrections_count"] = normalized_meta.get(
+            "corrections_count", 0
+        )
+        sync_legacy_fields(normalized_meta)
 
-    write_artifacts(skill_dir, normalized_meta, work_content, persona_content)
+        write_artifacts(skill_dir, normalized_meta, work_content, persona_content)
+    except Exception as error:
+        raise _incomplete_skill_error(skill_dir, error) from error
     return skill_dir
 
 
@@ -654,7 +685,11 @@ def main() -> None:
         work_content = Path(args.work).read_text(encoding="utf-8") if args.work else ""
         persona_content = Path(args.persona).read_text(encoding="utf-8") if args.persona else ""
 
-        skill_dir = create_skill(base_dir, slug, meta, work_content, persona_content)
+        try:
+            skill_dir = create_skill(base_dir, slug, meta, work_content, persona_content)
+        except (OSError, IncompleteSkillCreateError) as error:
+            print(f"error: {error}", file=sys.stderr)
+            sys.exit(1)
         print(f"Created skill: {skill_dir}")
         print("  Kind: meta-skill")
         print(f"  Character: {meta['character']}")

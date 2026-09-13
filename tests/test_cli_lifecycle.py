@@ -210,6 +210,68 @@ class CliLifecycleTest(unittest.TestCase):
                 )
             self.assertFalse((root / "skills" / "escape").exists())
 
+    def test_create_refuses_to_overwrite_an_existing_skill(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            writer = str(PROJECT_ROOT / "tools" / "skill_writer.py")
+            base_dir = root / "skills" / "colleague"
+            original_work = root / "original-work.md"
+            replacement_work = root / "replacement-work.md"
+            original_work.write_text("Original work\n", encoding="utf-8")
+            replacement_work.write_text("Replacement work\n", encoding="utf-8")
+
+            self.run_cmd(
+                PYTHON,
+                writer,
+                "--action",
+                "create",
+                "--slug",
+                "existing",
+                "--name",
+                "Original Name",
+                "--work",
+                str(original_work),
+                "--base-dir",
+                str(base_dir),
+                cwd=root,
+            )
+
+            skill_dir = base_dir / "existing"
+            original_meta = (skill_dir / "meta.json").read_text(encoding="utf-8")
+            original_generated_work = (skill_dir / "work.md").read_text(encoding="utf-8")
+
+            with self.assertRaises(subprocess.CalledProcessError) as context:
+                self.run_cmd(
+                    PYTHON,
+                    writer,
+                    "--action",
+                    "create",
+                    "--slug",
+                    "existing",
+                    "--name",
+                    "Replacement Name",
+                    "--work",
+                    str(replacement_work),
+                    "--base-dir",
+                    str(base_dir),
+                    cwd=root,
+                )
+
+            self.assertTrue(
+                context.exception.stderr.startswith("error: create target already exists")
+            )
+            self.assertIn("--action update", context.exception.stderr)
+            self.assertNotIn("Traceback", context.exception.stderr)
+            self.assertEqual(
+                (skill_dir / "meta.json").read_text(encoding="utf-8"),
+                original_meta,
+            )
+            self.assertEqual(
+                (skill_dir / "work.md").read_text(encoding="utf-8"),
+                original_generated_work,
+            )
+            self.assertEqual(list((skill_dir / "versions").iterdir()), [])
+
     def test_update_accepts_safe_legacy_slug_with_spaces(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)

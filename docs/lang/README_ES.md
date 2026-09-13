@@ -260,6 +260,7 @@ Distilly usa **Persona** como base universal, con módulos específicos de cada 
 
 ### 🧬 Evolución
 
+- 🛡️ **Creación segura** → si ya existe un Skill con el mismo `{character}/{slug}`, la creación se detiene y te dirige a Evolución en lugar de sobrescribir sus archivos
 - 📥 **Agregar archivos** → auto-analizar el delta → fusionar en secciones relevantes, nunca sobrescribe conclusiones existentes
 - 💬 **Corrección por conversación** → di "él no haría eso, sería xxx" → se escribe en la capa de Corrección, efecto inmediato
 - 🕰️ **Control de versiones** → auto-archivo en cada actualización, revertir a cualquier versión anterior

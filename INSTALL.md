@@ -97,6 +97,8 @@ Windows 上 Claude 安装器还会额外写入 `~/.claude/commands/{character}-{
 - `relationship` → `./skills/relationship/`
 - `celebrity` → `./skills/celebrity/`
 
+如果目标 `{character}/{slug}` 已经存在，创建器会停止，不会改写原来的文件。请通过进化模式更新已有 Skill；使用 CLI 时改用 `--action update`，不要删除旧目录后重新创建。例外是命令明确提示本次创建失败、目录可能不完整：先检查该目录，只有确认它就是要丢弃的失败产物时才手动删除，然后重试 `create`。
+
 用于宿主调用的 `SKILL.md` 已经自包含 Persona + Work。安装生成 Skill 时使用统一安装器；它只写入这一文件和 `.distilly-install.json`，不会复制可能含有私有原材料的整个生成目录。对于旧版下划线 frontmatter，安装器只在安装副本中规范为 `{character}-{slug}`，不会修改源 Skill：
 
 ```bash

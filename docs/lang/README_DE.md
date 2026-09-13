@@ -260,6 +260,7 @@ Distilly verwendet **Persona** als universelle Basis, mit familienspezifischen M
 
 ### 🧬 Evolution
 
+- 🛡️ **Sicheres Erstellen** → wenn bereits ein Skill mit demselben `{character}/{slug}` existiert, stoppt die Erstellung und verweist auf Evolution, statt dessen Dateien zu überschreiben
 - 📥 **Dateien anfügen** → automatische Delta-Analyse → Merge in die relevanten Abschnitte, überschreibt nie bestehende Schlussfolgerungen
 - 💬 **Gesprächskorrektur** → sage „so würden sie das nicht tun, sie wären xxx" → wird in die Korrekturschicht geschrieben, wirkt sofort
 - 🕰️ **Versionskontrolle** → automatische Archivierung bei jedem Update, Rollback zu jeder früheren Version

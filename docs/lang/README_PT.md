@@ -260,6 +260,7 @@ A Distilly usa **Persona** como a base universal, com módulos específicos de c
 
 ### 🧬 Evolução
 
+- 🛡️ **Criação segura** → se já existir um Skill com o mesmo `{character}/{slug}`, a criação para e orienta o uso da Evolução em vez de sobrescrever os arquivos
 - 📥 **Adicionar arquivos** → auto-análise de delta → merge nas seções relevantes, nunca sobrescreve conclusões existentes
 - 💬 **Correção por conversa** → diga "ele não faria isso, ele seria xxx" → escreve na camada de Correção, efeito imediato
 - 🕰️ **Controle de versão** → auto-arquivamento a cada atualização, rollback para qualquer versão anterior

@@ -268,6 +268,7 @@ Distilly's current creator uses **Persona** as the universal base, with family-s
 
 ### 🧬 Evolution
 
+- 🛡️ **Safe create** → if a Skill already uses the same `{character}/{slug}`, creation stops and points you to Evolution instead of rewriting its files
 - 📥 **Append files** → auto-analyze delta → merge into relevant sections, never overwrite existing conclusions
 - 💬 **Conversation correction** → say "they wouldn't do that, they'd be xxx" → writes to the Correction layer, takes effect immediately
 - 🕰️ **Version control** → auto-archive on every update, rollback to any previous version
