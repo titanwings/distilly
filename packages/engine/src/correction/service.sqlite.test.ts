@@ -356,6 +356,131 @@ describe("SQLite CorrectionService", () => {
     });
   });
 
+  it.each([
+    [false, "direct"],
+    [true, "direct"],
+    [false, "promote"],
+    [true, "promote"],
+    [true, "replace-candidate"],
+  ] as const)(
+    "preserves unprocessed material through correction (current=%s, route=%s), replay and reopen",
+    async (hasCurrent, route) => {
+      const root = await temporaryRoot();
+      const ids = new SequenceIds();
+      const clock = new FakeClock();
+      const composition = await open(root, { ids, clock });
+      const subject = hasCurrent
+        ? (await seedCurrent(composition)).ingested.subject
+        : await composition.subjects.create({ displayName: "Mira Chen" }, SDK_ACTOR, {
+            requestId: request(1),
+          });
+      const pendingText = "Mira records tradeoffs before choosing a design.";
+      const ingested = await composition.ingest.ingest(
+        {
+          subject: { kind: "existing", subjectId: subject.id },
+          materials: [
+            {
+              ...firstInput().materials[0]!,
+              clientRef: "unprocessed",
+              content: pendingText,
+              source: {
+                ...firstInput().materials[0]!.source,
+                uri: "https://example.test/mira/unprocessed",
+              },
+            },
+          ],
+          enqueue: "now",
+        },
+        SDK_ACTOR,
+        { requestId: request(10) },
+      );
+      const obsoleteBrief = await composition.leases.brief({ jobId: ingested.job!.id }, session(), {
+        requestId: request(11),
+      });
+      const input = {
+        subjectId: subject.id,
+        correction: { text: "Mira marks assumptions explicitly.", facet: ASSUMPTION_A },
+      };
+      const actor = route === "direct" ? USER_ACTOR : HOST_ACTOR;
+      const corrected = await composition.corrections.correct(input, actor, {
+        requestId: request(12),
+      });
+      if (route !== "direct") {
+        if (corrected.kind !== "suspended") throw new Error("Expected a relayed candidate.");
+        if (route === "promote") {
+          await composition.review.promote(
+            { subjectId: subject.id, candidateVersionId: corrected.candidate.id },
+            USER_ACTOR,
+            { requestId: request(13) },
+          );
+        } else {
+          await composition.corrections.correct(
+            {
+              subjectId: subject.id,
+              correction: {
+                text: "Mira asks reviewers to challenge assumptions.",
+                facet: ASSUMPTION_B,
+                baseCandidateVersionId: corrected.candidate.id,
+              },
+            },
+            USER_ACTOR,
+            { requestId: request(13) },
+          );
+        }
+      }
+      expect(row(root, "SELECT added_material_count FROM pending_jobs")).toEqual({
+        added_material_count: 1,
+      });
+      expect(count(root, "job_leases")).toBe(0);
+      await expectCode(
+        composition.commits.commit(commitInput(obsoleteBrief), session(), {
+          requestId: request(14),
+        }),
+        "stale_job",
+      );
+      composition.close();
+      const reopened = await open(root, { ids, clock });
+      const pendingBeforeReplay = row(root, "SELECT * FROM pending_jobs");
+      await expect(
+        reopened.corrections.correct(input, actor, { requestId: request(12) }),
+      ).resolves.toEqual(corrected);
+      expect(row(root, "SELECT * FROM pending_jobs")).toEqual(pendingBeforeReplay);
+      const briefing = await reopened.leases.brief(
+        { jobId: pendingBeforeReplay!.job_id as JobId },
+        session(2),
+        { requestId: request(15) },
+      );
+      expect(briefing.materials).toHaveLength(1);
+      expect(briefing.materials[0]).toMatchObject({ content: pendingText, ref: FIRST_REF });
+      const committed = await reopened.commits.commit(
+        {
+          ...commitInput(briefing),
+          patch: {
+            operations: [
+              {
+                op: "add",
+                claim: {
+                  facet: DECISION_STYLE,
+                  text: pendingText,
+                  evidence: [
+                    { kind: "brief_material", materialRef: FIRST_REF, quote: pendingText },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+        session(2),
+        { requestId: request(16) },
+      );
+      if (committed.kind !== "current") throw new Error("Expected a resumed current profile.");
+      expect(committed.profile.claims.map(({ text }) => text)).toEqual(
+        expect.arrayContaining([pendingText, input.correction.text]),
+      );
+      expect(count(root, "pending_jobs")).toBe(0);
+    },
+  );
+
   it("keeps ordinary duplicate ingest from fabricating a zero-delta pending job", async () => {
     const root = await temporaryRoot();
     const composition = await open(root);

@@ -665,18 +665,31 @@ export class CorrectionService {
     const target = addCorrectionMaterial(currentMaterials, prepared, published);
     if (target.inserted) insertCorrectionMaterialInTransaction(database, prepared);
 
-    const manifestItems = materialManifestFromSqlite(target.materials);
-    const materialSetHash = hashMaterialSet(manifestItems);
+    const currentManifestItems = materialManifestFromSqlite(target.materials);
+    const materialSetHash = hashMaterialSet(currentManifestItems);
+    // A correction consumes its content baseline and its own material, not research that
+    // has only been ingested. Version membership also defines the next briefing's delta.
+    const versionMaterialIds = new Set(
+      contentBaseline?.manifest.items.map((entry) => entry.materialId),
+    );
+    versionMaterialIds.add(prepared.record.id);
+    const versionMaterials = target.materials.filter(({ record }) =>
+      versionMaterialIds.has(record.id),
+    );
+    if (versionMaterials.length !== versionMaterialIds.size) {
+      throw storageCorrupt("SQLite correction baseline is not contained in current materials.");
+    }
+    const manifestItems = materialManifestFromSqlite(versionMaterials);
     const generation = authority.generation + 1;
     if (!Number.isSafeInteger(generation)) {
       throw storageCorrupt("SQLite correction generation exceeds the safe integer range.");
     }
     const grouping = deriveSourceGroups(
-      target.materials.map(({ record }) => record),
+      versionMaterials.map(({ record }) => record),
       "source-groups-v1",
     );
     const evidenceIndex = buildMaterialEvidenceIndex(
-      target.materials.map(({ record }) => record),
+      versionMaterials.map(({ record }) => record),
       grouping,
     );
     const replacement: ResolvedCorrectionReplacement = {
@@ -730,7 +743,7 @@ export class CorrectionService {
       subjectId,
       subjectDisplayName: subjectRow.display_name,
       generation,
-      materialSetHash,
+      materialSetHash: hashMaterialSet(manifestItems),
       ...(authority.current === undefined ? {} : { parentId: authority.current.version.id }),
       ...(authority.suspended === undefined
         ? {}
@@ -813,8 +826,8 @@ export class CorrectionService {
       generation,
       ...(nextCurrentId === undefined ? {} : { baseVersionId: nextCurrentId }),
       materialSetHash,
-      addedMaterialCount: manifestItems.length - baselineCount,
-      totalMaterialCount: manifestItems.length,
+      addedMaterialCount: currentManifestItems.length - baselineCount,
+      totalMaterialCount: currentManifestItems.length,
       state: "pending",
       queuedAt: now,
     };
