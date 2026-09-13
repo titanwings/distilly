@@ -245,7 +245,7 @@ export const briefingTooLarge = (details: JsonObject): DistillyError =>
     message: "The complete distillation briefing exceeds a verified session limit.",
     retryable: false,
     remediation:
-      "Use a larger-capacity host or reduce the new research batch; Distilly will not truncate it.",
+      "Use a larger-capacity host, or run distilly recover <job-id> --output <new-directory> for local file recovery within the engine limits. See INSTALL.md; Distilly will not truncate the briefing.",
     details,
   });
 

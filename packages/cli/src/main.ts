@@ -121,6 +121,7 @@ Usage:
   distilly doctor [--host <host>]
   distilly install <subject-id> --host <host>
   distilly uninstall --host <host>
+  distilly recover <job-id> --output <new-directory> [--timeout-seconds 1..1500]
   # <host>: codex | claude-code | openclaw | hermes
 
 The four host bindings share the same five-tool MCP contract. Setup remains
@@ -145,6 +146,28 @@ export const runPreviewCli = async (
   const [command, ...args] = argv;
   if (command === undefined || command === "help" || command === "--help" || command === "-h") {
     io.stdout.write(help);
+    return 0;
+  }
+  if (command === "recover") {
+    const { parseRecoveryArguments, recoverFromFiles } = await import("./file-recovery.js");
+    const options = parseRecoveryArguments(args);
+    const controller = new AbortController();
+    const cancel = () => controller.abort(new Error("Recovery cancelled before completion."));
+    process.once("SIGINT", cancel);
+    process.once("SIGTERM", cancel);
+    try {
+      await recoverFromFiles(
+        {
+          ...options,
+          root: join(environment.lifecycle.homeDirectory, ".distilly"),
+          signal: controller.signal,
+        },
+        io,
+      );
+    } finally {
+      process.removeListener("SIGINT", cancel);
+      process.removeListener("SIGTERM", cancel);
+    }
     return 0;
   }
   if (command === "setup") {
