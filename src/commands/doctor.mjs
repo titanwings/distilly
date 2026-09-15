@@ -10,14 +10,16 @@
  *      (CONTRACT §3: nothing is silently skipped).
  */
 
-import { existsSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { basename, join } from "node:path";
 
 import { register, PLANNED } from "./index.mjs";
 import { createReceipt, describeFile, displayPath } from "../cli/receipt.mjs";
 import { parseArgs } from "../cli/args.mjs";
 import { listAgents } from "../hosts/agents.mjs";
 import { inspectInstall, repoInstallDir } from "../install/hosts.mjs";
+import { resolveSkillsRoot } from "../cli/paths.mjs";
+import { parseAnchor } from "../knowledge/anchors.mjs";
 import { CHARACTER_PRESETS } from "../skill/presets.mjs";
 import { listSkills } from "../skill/writer.mjs";
 
@@ -48,6 +50,67 @@ function doctorHelp(binary = "distilly") {
 const OPTIONS = {
   "base-dir": { type: "string", value: "dir" },
 };
+
+/**
+ * Every anchor string an `evidence/derived/*.json` file cites.
+ *
+ * The derived layer is prose-plus-claims: a claim carries `evidence: ["k0001"]`,
+ * a boundary carries anchors too. Walking the JSON for `k00NN`-shaped strings
+ * finds them all without coupling to one schema, which is what "doctor checks
+ * what is on disk" means here.
+ */
+function citedAnchors(skillDir) {
+  const derivedDir = join(skillDir, "evidence", "derived");
+  if (!existsSync(derivedDir)) return [];
+  const found = new Set();
+  const walk = (value) => {
+    if (typeof value === "string") {
+      if (parseAnchor(value)) found.add(value);
+      return;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) walk(item);
+      return;
+    }
+    if (value && typeof value === "object") {
+      for (const item of Object.values(value)) walk(item);
+    }
+  };
+  for (const name of readdirSync(derivedDir)) {
+    if (!name.endsWith(".json")) continue;
+    try {
+      walk(JSON.parse(readFileSync(join(derivedDir, name), "utf8")));
+    } catch {
+      // A malformed derived file is reported by `view check`, not here.
+    }
+  }
+  return [...found];
+}
+
+/** Every anchor a skill's ledger knows about, so a citation can be checked. */
+function resolvedAnchors(skillDir) {
+  const ledgerPath = join(skillDir, "knowledge", "index.json");
+  if (!existsSync(ledgerPath)) return new Set();
+  let entries = [];
+  try {
+    const parsed = JSON.parse(readFileSync(ledgerPath, "utf8"));
+    entries = Array.isArray(parsed) ? parsed : (parsed.entries ?? []);
+  } catch {
+    return new Set();
+  }
+  const known = new Set();
+  for (const entry of entries) {
+    for (const anchor of entry?.anchors ?? []) {
+      const id = typeof anchor === "string" ? anchor : anchor?.anchor ?? anchor?.id;
+      if (id) known.add(id);
+    }
+    for (const detail of entry?.anchor_detail ?? []) {
+      const id = detail?.anchor ?? detail?.id;
+      if (id) known.add(id);
+    }
+  }
+  return known;
+}
 
 function readLedger(skillDir) {
   const ledgerPath = join(skillDir, "knowledge", "index.json");
@@ -106,15 +169,37 @@ register("doctor", {
     const familyBase = flags["base-dir"];
     let skillCount = 0;
     let anchorTotal = 0;
+    let citedTotal = 0;
+    const dangling = [];
     for (const [family, preset] of Object.entries(CHARACTER_PRESETS)) {
       if (preset.character !== family) continue;
-      const baseDir = familyBase ? join(familyBase, family) : (preset.storage_root ?? preset.legacy_storage_root);
+      // One resolver for all three `--base-dir` spellings: a bare directory must
+      // not be read as if a `skills/` level were underneath it.
+      // `--base-dir <...>/skills/colleague` names ONE family's storage root. The
+      // other families must not read the same directory again — doing so counted
+      // the same skill three times over ("inspected once, not once per family").
+      if (familyBase && Object.hasOwn(CHARACTER_PRESETS, basename(familyBase)) && basename(familyBase) !== family) {
+        continue;
+      }
+      const resolved = familyBase
+        ? resolveSkillsRoot({ baseDir: familyBase, family })
+        : { root: preset.storage_root ?? preset.legacy_storage_root, warning: null };
+      if (resolved.warning && !warnings.includes(resolved.warning)) warnings.push(resolved.warning);
+      const baseDir = resolved.root;
       const skills = listSkills(baseDir);
       for (const skill of skills) {
         skillCount += 1;
         const skillDir = join(baseDir, skill.slug);
         const ledger = readLedger(skillDir);
         anchorTotal += ledger.anchors;
+        // `cited` counts the citations that actually resolve; a dangling one is
+        // reported in `warnings`, never folded into the number — "we cite two
+        // anchors" and "one of the two is broken" are different claims.
+        const known = resolvedAnchors(skillDir);
+        for (const anchor of citedAnchors(skillDir)) {
+          if (known.has(anchor)) citedTotal += 1;
+          else dangling.push(`${family}/${skill.slug}: ${anchor}`);
+        }
         reporter.line(
           `  ${family}/${skill.slug}  ${skill.version}  corrections=${skill.corrections_count}  ` +
             `knowledge=${ledger.present ? `${ledger.entries} entries / ${ledger.bytes} bytes` : "none"}`,
@@ -132,10 +217,17 @@ register("doctor", {
       warnings.push("no generated skills found");
     }
 
+    if (dangling.length > 0) {
+      warnings.push(
+        `${dangling.length} anchor(s) cited by evidence/derived cannot be resolved against knowledge/index.json: ` +
+          dangling.join(", "),
+      );
+    }
+
     reporter.line("");
     reporter.line(
-      `Ledger coverage / 账本：${skillCount} skills, ${anchorTotal} anchors recorded, 0 cited ` +
-        "(evidence/derived is delivered by ds/06-retrospect)",
+      `Ledger coverage / 账本：${skillCount} skills, ${anchorTotal} anchors recorded, ${citedTotal} cited ` +
+        `by evidence/derived${dangling.length > 0 ? `, ${dangling.length} dangling` : ""}`,
     );
 
     const unavailable = Object.entries(PLANNED).map(([command, branch]) => ({
@@ -145,15 +237,16 @@ register("doctor", {
     reporter.line("");
     reporter.line(`Unavailable / 未实现：${unavailable.map((item) => item.channel).join(", ")}`);
 
-    return {
-      receipt: createReceipt("doctor", {
-        inputs,
-        outputs,
-        anchors: { total: anchorTotal, cited: 0 },
-        warnings,
-        unavailable,
-      }),
-      extra: { hosts: hostRows, skills: skillCount },
-    };
+    // `createReceipt` keeps exactly the eight contract fields, so anything command
+    // specific has to be attached to the object afterwards.
+    const receipt = createReceipt("doctor", {
+      inputs,
+      outputs,
+      anchors: { total: anchorTotal, cited: citedTotal },
+      warnings,
+      unavailable,
+    });
+    receipt.skills = skillCount;
+    return { receipt, extra: { hosts: hostRows, skills: skillCount } };
   },
 });

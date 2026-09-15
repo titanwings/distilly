@@ -23,14 +23,19 @@ import { basename, join, resolve } from "node:path";
 export function resolveSkillsRoot({ baseDir, family }) {
   const base = resolve(baseDir);
   const canonical = join(base, "skills", family);
-  if (existsSync(canonical)) return { root: canonical, mode: "skills-root", warning: null };
-  if (basename(base) === family) return { root: base, mode: "storage-root", warning: null };
-  if (existsSync(join(base, "skills"))) return { root: canonical, mode: "skills-root", warning: null };
+  if (existsSync(canonical)) return { root: canonical, mode: "skills-root", bare: false, warning: null };
+  if (basename(base) === family) return { root: base, mode: "storage-root", bare: false, warning: null };
+  if (existsSync(join(base, "skills"))) return { root: canonical, mode: "skills-root", bare: false, warning: null };
+  // The bare spelling — pointing at the container of the family directories
+  // rather than at a directory that holds `skills/`. It is read as-is (nothing is
+  // invented underneath it) and flagged, because every caller that accepts this
+  // spelling silently inspects one level too high and finds nothing.
   return {
     root: base,
     mode: "storage-root",
+    bare: true,
     warning:
-      `--base-dir ${baseDir} has no skills/ directory, so it was read as the storage root itself (${base}). ` +
+      `--base-dir ${baseDir} contains no skills/ directory, so it was read as the storage root itself (${base}). ` +
       `The canonical spelling is --base-dir <dir-containing-skills>, i.e. ${join(base, "..", "..")} for this layout.`,
   };
 }
