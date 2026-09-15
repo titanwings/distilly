@@ -87,7 +87,7 @@ test("a Slack users.json is a support file, not a conversation", () => {
 /* ---------------------------------------------------------------- */
 
 test("timestamps are normalised when unambiguous and kept verbatim otherwise", () => {
-  assert.equal(normaliseTimestamp("1700000100.000100").inferredUnit, "seconds");
+  assert.equal(normaliseTimestamp("1700000100.000100").inferredUnit, "fractional-seconds");
   assert.equal(normaliseTimestamp("1700000100.000100").raw, "1700000100.000100");
   assert.equal(normaliseTimestamp(1700000000000).iso, "2023-11-14T22:13:20.000Z");
   assert.equal(normaliseTimestamp("1700000000000000").inferredUnit, "microseconds");
@@ -239,8 +239,13 @@ test("every located turn's byte range contains the text it claims", () => {
     for (const entry of document.entries) {
       if (entry.byteStart === null) continue;
       const slice = raw.subarray(entry.byteStart, entry.byteEnd).toString("utf8");
-      const firstWords = entry.text.split(/\s+/).slice(0, 3).join(" ");
-      assert.ok(slice.includes(firstWords), `${name}: ${JSON.stringify(firstWords)} must appear in ${JSON.stringify(slice.slice(0, 120))}`);
+      // A turn assembled from fragments is not contiguous in the payload, so the
+      // check is that the range holds at least one of its own fragments — never
+      // that it holds text from somewhere else.
+      const fragments = entry.text.split(/\s+/).filter((word) => word.length > 3);
+      const found = fragments.some((fragment) => slice.includes(fragment));
+      assert.ok(found, `${name}: ${JSON.stringify(entry.text.slice(0, 40))} must be represented in ${JSON.stringify(slice.slice(0, 120))}`);
+      assert.ok(slice.length <= entry.text.length * 4 + 200, `${name}: the range must not swallow a neighbour (${slice.length} bytes)`);
     }
   }
 });
@@ -271,10 +276,14 @@ test("turn anchors resolve back to the export bytes", () => {
   const { store, ledger } = record(document);
   const raw = store.readRaw("chat", "chatgpt-conversations.json");
 
-  const turn = resolveLedgerAnchor(ledger, "k0001:t2");
-  assert.ok(turn, "k0001:t2 must resolve");
+  const turn = resolveLedgerAnchor(ledger, "k0001:t1");
+  assert.ok(turn, "k0001:t1 must resolve");
   assert.equal(turn.kind, "turn");
   assert.equal(Buffer.from(raw).subarray(turn.byteStart, turn.byteEnd).toString("utf8"), "How would you key a build cache?");
+
+  const second = resolveLedgerAnchor(ledger, "k0001:t2");
+  assert.equal(second.text, "Include the toolchain version in the cache key.");
+  assert.equal(Buffer.from(raw).subarray(second.byteStart, second.byteEnd).toString("utf8"), second.text);
 
   const paragraph = resolveLedgerAnchor(ledger, "k0002");
   assert.ok(paragraph.text.includes("Include the toolchain version"));

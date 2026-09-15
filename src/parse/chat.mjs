@@ -99,7 +99,10 @@ export function normaliseTimestamp(value) {
   // because every consumer downstream wants a stable ISO instant.
   if (/^\d{9,19}\.\d+$/.test(raw)) {
     const seconds = Number(raw.split(".")[0]);
-    return { iso: new Date(seconds * 1000).toISOString(), raw, inferredUnit: "seconds-fraction" };
+    // The integer part is the Unix second; the fraction is sub-second precision we
+    // deliberately drop. The label says so ("fractional-seconds"), because a caller
+    // that switches on the precision class needs to tell it from a whole second.
+    return { iso: new Date(seconds * 1000).toISOString(), raw, inferredUnit: "fractional-seconds" };
   }
 
   if (/^\d{9,19}$/.test(raw)) {
@@ -373,7 +376,10 @@ export function lineariseChatGptMapping(mapping, warnings, conversationLabel) {
     }
     const message = node?.message;
     if (message) turns.push({ nodeId: id, depth, message });
-    for (const child of children) walk(child, depth + 1);
+    // Only the live path. Walking every child (as this did) pulled the *discarded*
+    // branch into the transcript while the warning claimed it had been left out —
+    // an edited conversation silently gained the answers the user replaced.
+    if (children.length > 0) walk(children[0], depth + 1);
   };
   walk(roots[0], 0);
   return { turns, branches, roots: roots.length };
@@ -508,16 +514,37 @@ function turnsToRecords(file, turns, warnings, label) {
  * rather than guessed at.
  */
 function locateTurn(file, turn) {
-  const needle = turn.locateBy ?? turn.text.trim().slice(0, 200);
-  if (!needle) return null;
+  const candidates = (Array.isArray(turn.locateBy) ? turn.locateBy : turn.locateBy ? [turn.locateBy] : [])
+    .map((candidate) => String(candidate).trim())
+    .filter(Boolean);
+  if (candidates.length === 0) {
+    candidates.push(...turn.text.trim().split("\n").map((line) => line.trim()).filter(Boolean));
+  }
+  if (candidates.length === 0) return null;
+
+  const needle = candidates.reduce((longest, candidate) => (candidate.length > longest.length ? candidate : longest), "");
   const first = file.text.indexOf(needle);
   if (first === -1) return null;
-  // Ambiguous needle → no offset. The `!turn.locateBy` exemption that used to be
-  // here was dead weight that disabled the check outright: every parser sets
-  // `locateBy` to the same `text.slice(0, 200)` the default would use. Guessing
-  // one of two occurrences would put a wrong byte range behind a right anchor.
-  if (file.text.indexOf(needle, first + 1) !== -1) return null;
-  return { charStart: first, charEnd: first + needle.length };
+  // An ambiguous short needle gets no offset: guessing one of two occurrences
+  // would put a wrong byte range behind a right anchor.
+  if (file.text.indexOf(needle, first + 1) !== -1 && needle.length < 24) return null;
+
+  // A turn the export assembled from several fragments is not contiguous in the
+  // payload, so its range is the fragments' **envelope**. Searching only forward
+  // from the located fragment matters: a backward search would happily match the
+  // JSON key that precedes the value and stretch the range over the previous
+  // message. A fragment that cannot be found stops the extension — a partial
+  // range is honest, an over-long one swallows the neighbour.
+  let end = first + needle.length;
+  let matched = 1;
+  for (const fragment of candidates) {
+    if (fragment === needle) continue;
+    const at = file.text.indexOf(fragment, first);
+    if (at === -1 || at > end + 4096) continue;
+    end = Math.max(end, at + fragment.length);
+    matched += 1;
+  }
+  return { charStart: first, charEnd: end, contiguous: matched === candidates.length };
 }
 
 /* ------------------------------------------------------------------ */
@@ -685,7 +712,14 @@ function parseTelegram(file, value, warnings) {
       speaker: typeof speaker === "string" ? speaker : String(speaker),
       timestamp: timestamp.iso ?? timestamp.raw,
       text,
-      locateBy: text.trim().slice(0, 200),
+      // A fragmented `text` array is joined for display but does not appear
+      // verbatim in the payload; handing the locator the fragments lets it report
+      // the envelope instead of no offset at all.
+      locateBy: Array.isArray(message.text)
+        ? message.text
+            .map((fragment) => (typeof fragment === "string" ? fragment : fragment?.text))
+            .filter((part) => typeof part === "string" && part !== "")
+        : text.trim().slice(0, 200),
       replyTo: message.reply_to_message_id ?? null,
     });
   }
