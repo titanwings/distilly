@@ -15,7 +15,17 @@ allowed-tools: Read, Write, Edit, Bash
 >
 > Keep the shell in the user's current workspace so relative output paths such as `./skills/...` remain project-local. Resolve every `prompts/...` resource against `{distilly_skill_root}`. The only supported entrypoint is the `distilly` CLI; do not call the bundled Python tools directly (they are deprecated, see the migration table below).
 >
+> **How to run that CLI**: there is no global `distilly` on `PATH` — the CLI *is* the file inside this Skill. Invoke it as
+> `node "{distilly_skill_root}/bin/distilly.mjs" <subcommand> […]` (it is also executable, so `"{distilly_skill_root}/bin/distilly.mjs" <subcommand>` works once the file mode survives the copy). Every command in the tables below is written `distilly <subcommand>` as shorthand for that. If `node` is missing, say so and stop rather than reimplementing a step by hand.
+>
+> **Where things are written**: `--base-dir <workspace>` means the workspace root (the directory holding `skills/`) in *every* command — `harvest`, `retrospect`, `view`, `doctor`, `skill`. When a command needs the level that directly contains `<slug>/` instead, that is `--skills-dir <dir>` (`skill …`) or `--dir <person-dir>` (`retrospect`). Never pass both `--base-dir` and `--skills-dir`; the CLI rejects it rather than guessing.
+>
 > 在读取内置 prompt 或执行内置命令前，先取得宿主实际加载的这份 `SKILL.md` 所在绝对目录；下文以 `{distilly_skill_root}` 表示。Claude Code 可用 `${CLAUDE_SKILL_DIR}`，其他宿主使用其 Skill discovery 上下文提供的实际路径。不要假定 shell 当前目录就是 Skill 目录，也不要猜测或硬编码安装路径。shell 应继续停留在用户工作区，使 `./skills/...` 等输出仍写入当前项目；所有 `prompts/...` 都必须从 `{distilly_skill_root}` 解析。唯一受支持的入口是 `distilly` CLI，不要直接调用仓库里的 Python 工具（它们已废弃，见下方迁移对照表）。
+>
+> **这个 CLI 怎么调**：`PATH` 上没有全局 `distilly`——CLI 就是本 Skill 目录里的那个文件。写成
+> `node "{distilly_skill_root}/bin/distilly.mjs" <子命令> […]`（该文件也是可执行的，拷贝时若保留了执行位，`"{distilly_skill_root}/bin/distilly.mjs" <子命令>` 也可以）。下文所有表格里的 `distilly <子命令>` 都是它的简写。没有 `node` 就如实说明并停下，不要手工重做某一步。
+>
+> **东西写到哪**：`--base-dir <工作区>` 在**每一条**命令里都表示工作区根（下面有 `skills/`）——`harvest`、`retrospect`、`view`、`doctor`、`skill` 一致。需要"直接存放 `<slug>/` 的那一层"时用 `--skills-dir <dir>`（`skill …`）或 `--dir <人物目录>`（`retrospect`）。两个同时给会被拒绝，而不是猜一个。
 
 # Distilly 创建器
 
