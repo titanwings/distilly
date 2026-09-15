@@ -25,6 +25,82 @@ const SRT_TIMECODE = /^\s*(\d{1,2}):(\d{2}):(\d{2})[,.](\d{1,3})\s*-->\s*(\d{1,2
 const VTT_TIMECODE = /^\s*(?:(\d{1,2}):)?(\d{2}):(\d{2})\.(\d{3})\s*-->\s*(?:(\d{1,2}):)?(\d{2}):(\d{2})\.(\d{3})(.*)$/;
 const VTT_VOICE = /^<v(?:\.[^\s>]+)*\s+([^>]+)>/;
 /**
+ * `Name: text` — the separator a transcript uses to name a speaker.
+ *
+ * Group 1 is the name, group 2 the separator, and the three alternatives are not
+ * interchangeable. `": "` is how every English caption track writes a label and is
+ * taken at face value. The full-width colon of a Chinese transcript
+ * (`说话人 1：大家好`) and the no-space form of a diarisation export
+ * (`SPEAKER_00:…`, `说话人1:…`) are **ambiguous** — a full-width colon also ends an
+ * ordinary Chinese sentence (`注意：…`) — so those two are only claimed for a name
+ * that passes `isSpeakerLabel`.
+ */
+const LABEL = /([\p{L}\p{N}][\p{L}\p{N} ._'-]{0,23})(:\s+|：\s*|:\s*)/gu;
+/**
+ * Labels that name a role in a transcript rather than a person.
+ *
+ * `说话人 1` and `SPEAKER_00` are unambiguous — no sentence says `注意：` and means
+ * a person — so they are claimed without any further evidence.
+ */
+const DIARISATION_LABEL =
+  /^(?:说话人|说话者|发言人|嘉宾|参与者|受访者|主持人|讲述人|连线人|speaker|spk|participant|interviewer|interviewee|guest|host|moderator)\s*[-_ ]?\s*\d*$/iu;
+/**
+ * Names that appear as a line-initial label at least twice in the document.
+ *
+ * A one-off `注意：` is a sentence, not a speaker, and the two are the same shape.
+ * The cheapest evidence that separates them without carrying a name list is
+ * repetition: a person in a real transcript says something more than once. A
+ * single-cue file therefore claims no `Name：` speaker at all — which is the safe
+ * direction, because an anchor attributed to the wrong person is worse than one
+ * attributed to nobody.
+ */
+export function collectSpeakerRoster(text) {
+  const counts = new Map();
+  const lineLabel = new RegExp(`^[^\\S\\n]*[\\u2013\\u2014-]?[^\\S\\n]*${LABEL.source}`, "gmu");
+  for (const match of String(text ?? "").matchAll(lineLabel)) {
+    const name = speakerFromLine(`${match[1]}: x`);
+    if (name === null) continue;
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+  return new Set([...counts].filter(([, count]) => count >= 2).map(([name]) => name));
+}
+/**
+ * Whether a label may be claimed as a speaker.
+ *
+ * @param {string} name reduced speaker name
+ * @param {string} separator the text between the name and the dialogue
+ * @param {Set<string>|undefined} roster result of `collectSpeakerRoster`
+ */
+function isSpeakerLabel(name, separator, roster) {
+  if (/^:\s+$/.test(separator ?? "")) return true;
+  if (DIARISATION_LABEL.test(name)) return true;
+  return roster instanceof Set && roster.has(name);
+}
+/**
+ * Where a label's *name* begins inside a regex match.
+ *
+ * The name pattern is greedy, so for `… IN ORDER. MR. LEWIS: I thank you.` the
+ * match begins at the earliest word that can still reach the colon — often
+ * mid-sentence and even mid-word (`L BE IN ORDER. MR. LEWIS: `). Reducing it to
+ * the last sentence fragment moves the real name further right, and testing the
+ * sentence boundary at the *raw* match start rejected nearly every mid-cue change
+ * in a real caption track: the bytes before `L BE …` are `IL`, not `. `.
+ */
+function nameStartInMatch(matchText, name) {
+  const spaced = name
+    .split(/\s+/)
+    .map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("\\s+");
+  const found = new RegExp(spaced, "u").exec(matchText);
+  return found === null ? 0 : found.index;
+}
+/** The name the label policy accepts for a match, or `null`. */
+function labelName(match, roster) {
+  const name = speakerFromLine(`${match[1]}: x`);
+  if (name === null) return null;
+  return isSpeakerLabel(name, match[2], roster) ? name : null;
+}
+/**
  * Split one cue's text at the speaker changes inside it.
  *
  * Real caption tracks are a stream: the speaker changes mid-cue (`… MINUTES.
@@ -36,9 +112,12 @@ const VTT_VOICE = /^<v(?:\.[^\s>]+)*\s+([^>]+)>/;
  * its own, so every run keeps the cue's timecode and byte range — the range is an
  * honest superset of the text, and no timing is invented.
  *
+ * @param {string[]} lines the cue's raw lines
+ * @param {string|null} initialSpeaker the speaker the cue's own first line names
+ * @param {Set<string>|undefined} roster names allowed to use an ambiguous label
  * @returns {Array<{speaker: string|null, text: string}>} one entry per run
  */
-export function splitSpeakerRuns(lines, initialSpeaker) {
+export function splitSpeakerRuns(lines, initialSpeaker, roster) {
   // Two views of the same cue: `flat` is what a reader should see (caption tracks
   // break lines mid-sentence, so they are joined with spaces), `verbatim` is what
   // the payload actually contains. Labels are found on `flat`, but a split run is
@@ -65,10 +144,9 @@ export function splitSpeakerRuns(lines, initialSpeaker) {
     .map((line) => line.replace(TAG, "").replace(CUE_SETTINGS, "").replace(/[ \t]+$/, ""))
     .filter((line) => line.trim() !== "")
     .join("\n");
-  const label = /([\p{L}\p{N}][\p{L}\p{N} ._'-]{0,23}):\s+/gu;
   const cuts = [];
-  for (const match of flat.matchAll(label)) {
-    const name = speakerFromLine(`${match[1]}: x`);
+  for (const match of flat.matchAll(new RegExp(LABEL.source, "gu"))) {
+    const name = labelName(match, roster);
     if (name === null) continue;
     // The boundary belongs to the *name*, not to the greedy match that reaches it.
     const at = match.index + nameStartInMatch(match[0], name);
@@ -81,9 +159,8 @@ export function splitSpeakerRuns(lines, initialSpeaker) {
   // Walk the verbatim text and cut at the same labels, matched by name so the two
   // views stay aligned without index arithmetic across differently-spaced strings.
   const markers = [];
-  const nameAt = new RegExp(label.source, "gu");
-  for (const match of verbatim.matchAll(nameAt)) {
-    const name = speakerFromLine(`${match[1]}: x`);
+  for (const match of verbatim.matchAll(new RegExp(LABEL.source, "gu"))) {
+    const name = labelName(match, roster);
     if (name === null) continue;
     const labelStart = match.index + nameStartInMatch(match[0], name);
     const before = verbatim.slice(Math.max(0, labelStart - 2), labelStart);
@@ -109,7 +186,7 @@ export function splitSpeakerRuns(lines, initialSpeaker) {
   return runs;
 }
 
-const SPEAKER_PREFIX = /^([\p{L}\p{N}][\p{L}\p{N} ._'-]{0,23}):\s+(\S.*)$/u;
+const SPEAKER_PREFIX = /^([\p{L}\p{N}][\p{L}\p{N} ._'-]{0,23})(:\s+|：\s*|:\s*)(\S.*)$/u;
 
 /**
  * Titles that end in a period without ending a sentence.
@@ -152,24 +229,17 @@ function speakerFromLine(line) {
   return name;
 }
 /**
- * Where a label's *name* begins inside a regex match.
+ * The label a cue's first line opens with, before the policy decision is made.
  *
- * The name pattern is greedy, so for `… IN ORDER. MR. LEWIS: I thank you.` the
- * match begins at the earliest word that can still reach the colon — often
- * mid-sentence and even mid-word (`L BE IN ORDER. MR. LEWIS: `). Reducing it to
- * the last sentence fragment moves the real name further right, and testing the
- * sentence boundary at the *raw* match start rejected nearly every mid-cue change
- * in a real caption track: the bytes before `L BE …` are `IL`, not `. `, so the
- * caption stream only ever split a cue when the previous sentence happened to be
- * short enough for the name to start the match.
+ * @returns {{name: string, separator: string}|null}
  */
-function nameStartInMatch(matchText, name) {
-  const spaced = name
-    .split(/\s+/)
-    .map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-    .join("\\s+");
-  const found = new RegExp(spaced, "u").exec(matchText);
-  return found === null ? 0 : found.index;
+function cueHeadLabel(line) {
+  const text = String(line ?? "").replace(/^[\s\u2013\u2014-]+/u, "");
+  const match = new RegExp(`^${LABEL.source}`, "u").exec(text);
+  if (match === null) return null;
+  const name = speakerFromLine(`${match[1]}: x`);
+  if (name === null) return null;
+  return { name, separator: match[2] };
 }
 const TIMECODE_ANY = /^\s*\d{1,2}:\d{2}:\d{2}[.,]\d{1,3}\s*-->/;
 const TAG = /<[^>]*>/g;
@@ -288,6 +358,10 @@ export function splitCues(file, format) {
   const text = file.text;
   const matcher = format === "vtt" ? VTT_TIMECODE : SRT_TIMECODE;
   const { lines } = splitLines(text);
+  // Who is allowed to be called a speaker by an ambiguous label is a property of
+  // the whole document, not of one cue: `注意：` occurs once, a speaker occurs
+  // again. The roster is built once here so both callers of the label logic agree.
+  const roster = collectSpeakerRoster(text);
 
   const cueStarts = [];
   for (let index = 0; index < lines.length; index += 1) {
@@ -349,9 +423,9 @@ export function splitCues(file, format) {
       speaker = voice[1].trim();
       speakerSource = "webvtt-voice";
     } else {
-      const named = speakerFromLine(cleaned[0]);
-      if (named !== null) {
-        speaker = named;
+      const head = cueHeadLabel(cleaned[0]);
+      if (head !== null && isSpeakerLabel(head.name, head.separator, roster)) {
+        speaker = head.name;
         speakerSource = "name-prefix";
       }
     }
@@ -390,7 +464,7 @@ export function splitCues(file, format) {
     // One cue may hold several speakers; emit one record per run. Each run keeps the
     // cue's timecode and byte range (a speaker change inside a cue has no timecode
     // of its own), so the text is exact and nothing is invented.
-    const runs = splitSpeakerRuns(rawLines, speaker);
+    const runs = splitSpeakerRuns(rawLines, speaker, roster);
     const multi = runs.length > 1;
     for (const run of runs) {
       cues.push({

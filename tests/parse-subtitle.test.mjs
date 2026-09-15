@@ -286,3 +286,87 @@ test("a mid-cue speaker change is found after a long sentence too", () => {
     assert.ok(text.includes(entry.text), `${JSON.stringify(entry.text)} must be in the payload`);
   }
 });
+
+/** A SubRip payload built from `[speaker, text]` pairs, one cue each. */
+function srtFrom(pairs) {
+  const pad = (value, width) => String(value).padStart(width, "0");
+  const timecode = (second) => `00:${pad(Math.floor(second / 60), 2)}:${pad(second % 60, 2)},000`;
+  return Buffer.from(
+    pairs
+      .map(([who, text], index) => `${index + 1}\n${timecode(index * 3 + 1)} --> ${timecode(index * 3 + 2)}\n${who}${text}`)
+      .join("\n\n") + "\n",
+    "utf8",
+  );
+}
+
+test("a Chinese transcript's full-width colon is read as a speaker", () => {
+  // `Name: text` is how an English caption track writes a speaker; a Chinese
+  // meeting export writes `说话人 1：…` with a full-width colon and no space. Both
+  // separators used to miss the pattern entirely, so a Chinese transcript yielded
+  // **zero** speakers and every per-speaker derivation came out empty — the corpus
+  // looked unlabelled when it was labelled on every single line.
+  const raw = srtFrom([
+    ["说话人 1：", "今天评审缓存改造，先请张三讲结论。"],
+    ["说话人 2：", "结论是键里必须带工具链版本。"],
+    ["说话人 1：", "那就按这个方案走。"],
+  ]);
+  const document = parseSubtitle(new SourceFile({ path: "/tmp/zh.srt", raw: new Uint8Array(raw) }));
+
+  assert.deepEqual(document.meta.speakers, ["说话人 1", "说话人 2"]);
+  assert.deepEqual(
+    document.entries.map((entry) => entry.speaker),
+    ["说话人 1", "说话人 2", "说话人 1"],
+  );
+  // The label stays part of the text: an anchor's span has to be a slice of the payload.
+  assert.match(document.entries[0].text, /^说话人 1：今天评审/);
+});
+
+test("a repeated name and a diarisation role are speakers; a one-off colon is not", () => {
+  // A full-width colon also ends an ordinary sentence, so `注意：` and a speaker are
+  // the same shape. Repetition is the evidence that separates them — a person in a
+  // transcript says something more than once — and a diarisation role needs none.
+  const noteOnce = parseSubtitle(
+    new SourceFile({
+      path: "/tmp/note.srt",
+      raw: new Uint8Array(srtFrom([["注意：", "缓存键必须包含版本。"], ["第二句补充说明。", ""]])),
+    }),
+  );
+  assert.deepEqual(noteOnce.meta.speakers, [], "a one-off `注意：` is a sentence, not a speaker");
+
+  const rolesOnce = parseSubtitle(
+    new SourceFile({
+      path: "/tmp/role.srt",
+      raw: new Uint8Array(srtFrom([["SPEAKER_00:", "我们先对齐一下。"], ["谢谢大家。", ""]])),
+    }),
+  );
+  assert.deepEqual(rolesOnce.meta.speakers, ["SPEAKER_00"], "a diarisation role is unambiguous");
+
+  const repeated = parseSubtitle(
+    new SourceFile({
+      path: "/tmp/repeat.srt",
+      raw: new Uint8Array(srtFrom([["张三：", "我先说结论。"], ["李四：", "我补充一点。"], ["张三：", "那我来收口。"]])),
+    }),
+  );
+  // 张三 labels two cues and is claimed; 李四 labels one and is **not**. That is the
+  // price of the repetition rule, paid deliberately: in a real meeting every
+  // participant speaks more than once (the 26-cue Chinese fixture recognises all
+  // three of its speakers), while a full-width colon in ordinary prose occurs once.
+  // An anchor attributed to the wrong person is worse than one attributed to nobody,
+  // so the ambiguous separator errs towards nobody.
+  assert.deepEqual(repeated.meta.speakers, ["张三"], "a single-occurrence name is not claimed");
+
+  const twice = parseSubtitle(
+    new SourceFile({
+      path: "/tmp/twice.srt",
+      raw: new Uint8Array(
+        srtFrom([
+          ["张三：", "我先说结论。"],
+          ["李四：", "我补充一点。"],
+          ["李四：", "还有第二点。"],
+          ["张三：", "那我来收口。"],
+        ]),
+      ),
+    }),
+  );
+  assert.deepEqual(twice.meta.speakers, ["张三", "李四"], "one more line is all it takes");
+});
