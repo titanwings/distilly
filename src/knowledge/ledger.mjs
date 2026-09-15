@@ -31,7 +31,7 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { KnowledgeStore, atomicWriteText, sha256Hex, stableStringify } from "./store.mjs";
 import { assignAnchorsToText, conservationReport, formatAnchor, formatSubAnchor, parseAnchor } from "./anchors.mjs";
 
@@ -530,7 +530,23 @@ export function recordDocument(store, ledger, document, options = {}) {
     };
   }
 
-  const textWrite = store.writeText(source, anchored.text, document.textStem);
+  // Two different sources under one bucket must not share a text file. The ledger
+  // already says who owns which path, so the rule needs no run state: if the path
+  // we would write is claimed by a *different* origin, stem it with this file's own
+  // name. Same origin → same path, so a repeat harvest stays idempotent.
+  let textStem = document.textStem ?? null;
+  if (!textStem) {
+    const target = store.textPath(source, null);
+    const relative = target.slice(store.knowledgeRoot.length + 1).split(sep).join("/");
+    const claimedByOther = ledger.some(
+      (entry) => entry?.locations?.text === relative && entry?.origin !== document.origin,
+    );
+    if (claimedByOther) {
+      const rawName = storedFiles[0]?.name ?? null;
+      if (rawName) textStem = rawName.replace(/\.[^.]+$/, "");
+    }
+  }
+  const textWrite = store.writeText(source, anchored.text, textStem);
   const prepared = {
     ...document,
     files: storedFiles.map((file) => ({

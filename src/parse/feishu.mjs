@@ -46,7 +46,22 @@ function firstKey(source, keys) {
 
 /** `content` may be a string, `{text|content}`, or a list of parts. */
 function flattenContent(content) {
-  if (typeof content === "string") return content;
+  if (typeof content === "string") {
+    // The open API hands back `body.content` as a **JSON-encoded string**
+    // ("{\"text\": \"…\"}"). Returning it verbatim puts the envelope into the
+    // person's knowledge base — the paragraph reads `林工：{"text": "…"}` instead of
+    // what was actually said.
+    const trimmed = content.trim();
+    if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (parsed !== null && typeof parsed === "object") return flattenContent(parsed);
+      } catch {
+        // Not JSON after all: the string is the message.
+      }
+    }
+    return content;
+  }
   if (Array.isArray(content)) {
     return content
       .map((part) => (part && typeof part === "object" ? (part.text ?? part.content ?? "") : String(part ?? "")))
