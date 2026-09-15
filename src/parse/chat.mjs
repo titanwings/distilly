@@ -196,7 +196,21 @@ export function detectChatFormat(file) {
     const keys = new Set(objects.slice(0, 5).flatMap((item) => Object.keys(item)));
 
     // ---- Slack channels.json (channel index) --------------------------
-    if (objects.length > 0 && objects.every((item) => "id" in item && "name" in item && !("messages" in item))) {
+    // Slack channels.json. A users.json also carries id+name, so the user-shaped
+    // keys must be excluded here or channels claims it first (users.json is
+    // id+profile/real_name/is_bot).
+    if (
+      objects.length > 0 &&
+      objects.every(
+        (item) =>
+          "id" in item &&
+          "name" in item &&
+          !("messages" in item) &&
+          !("profile" in item) &&
+          !("real_name" in item) &&
+          !("is_bot" in item),
+      )
+    ) {
       reasons.push("array of channel objects with id+name (Slack channels.json)");
       return { format: "slack-channels", reasons, value, shape };
     }
@@ -266,6 +280,20 @@ export function detectChatFormat(file) {
     }
   } else {
     // ---- object-rooted containers -------------------------------------
+    // Instagram / Facebook DM dump: an object root holding participants + messages.
+    // Its own shape, not a wrapper around someone else's.
+    if (Array.isArray(value.messages) && Array.isArray(value.participants)) {
+      const hasSenderName = value.messages.some((item) => item && typeof item === "object" && "sender_name" in item);
+      reasons.push(
+        "object root with participants[] + messages[] carrying " +
+          (hasSenderName ? "sender_name" : "no sender field") +
+          " (Instagram/Facebook DM dump)",
+      );
+      // The whole object, not just `messages`: `parseInstagram` reads `participants`
+      // from beside the array (findParticipantNames looks one level up).
+      return { format: "instagram-messages", reasons, value, shape };
+    }
+
     const nested = pick(value, ["conversations", "chats", "messages", "records", "data"]);
     if (nested.key && Array.isArray(nested.value)) {
       const inner = nested.value.filter((item) => item && typeof item === "object");
@@ -484,7 +512,11 @@ function locateTurn(file, turn) {
   if (!needle) return null;
   const first = file.text.indexOf(needle);
   if (first === -1) return null;
-  if (file.text.indexOf(needle, first + 1) !== -1 && !turn.locateBy) return null;
+  // Ambiguous needle → no offset. The `!turn.locateBy` exemption that used to be
+  // here was dead weight that disabled the check outright: every parser sets
+  // `locateBy` to the same `text.slice(0, 200)` the default would use. Guessing
+  // one of two occurrences would put a wrong byte range behind a right anchor.
+  if (file.text.indexOf(needle, first + 1) !== -1) return null;
   return { charStart: first, charEnd: first + needle.length };
 }
 
@@ -730,7 +762,15 @@ function parseInstagram(value, warnings) {
     }
     meta.conversations.push({
       title: conversation.title ?? null,
-      participants: Array.isArray(conversation.participants) ? conversation.participants.map((p) => p?.name).filter(Boolean) : null,
+      // An object-rooted dump carries `participants` beside the messages array, so
+      // the per-conversation entry falls back to the names found one level up —
+      // otherwise every conversation reports `null` participants even though the
+      // document-level list is right there.
+      participants: Array.isArray(conversation.participants)
+        ? conversation.participants.map((p) => p?.name).filter(Boolean)
+        : participants.length > 0
+          ? participants
+          : null,
       turns: kept,
     });
     if (kept === 0) warnings.push(`${label}: no message carried text`);
