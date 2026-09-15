@@ -200,6 +200,15 @@ export function renderHelp({ version, binary = "distilly" } = {}) {
 }
 
 /** Usage string for one command, built from its registered options. */
+/** The bilingual pair, with the `---` divider and the `## English` marker the convention uses. */
+function bilingualBody(zh, en) {
+  const chinese = typeof zh === "string" && zh !== "" ? zh : "";
+  const english = typeof en === "string" && en !== "" ? en : "";
+  if (chinese === "") return english;
+  if (english === "") return chinese;
+  return `${chinese}\n\n---\n\n## English\n\n${english}`;
+}
+
 export function renderCommandHelp(command, { binary = "distilly" } = {}) {
   // Three shapes live in this tree, and all three must render:
   //   help: "…"            a plain string
@@ -211,9 +220,9 @@ export function renderCommandHelp(command, { binary = "distilly" } = {}) {
   if (typeof command.help === "string") {
     body = command.help;
   } else if (command.help && typeof command.help === "object") {
-    body = [command.help.zh, command.help.en].filter((part) => typeof part === "string" && part !== "").join("\n\n---\n\n");
+    body = bilingualBody(command.help.zh, command.help.en);
   } else if (typeof command.zh === "string" || typeof command.en === "string") {
-    body = [command.zh, command.en].filter((part) => typeof part === "string" && part !== "").join("\n\n---\n\n");
+    body = bilingualBody(command.zh, command.en);
   }
   const head = command.usage.replace(/^distilly/, binary);
   return (body === "" ? head : `${head}\n\n${body}`).trimEnd();

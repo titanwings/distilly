@@ -120,7 +120,19 @@ register("collect", {
 register("consent", {
   summary: "computer-use 同意管理 / consent tokens",
   usage: "distilly consent <grant|list|verify|revoke|prune> [options] [--json]",
-  zh: ["用法 / Usage:", "  distilly consent <grant|list|verify|revoke|prune> [--json]", "", "同意令牌存在 ~/.distilly/consent.json；没有令牌时 collect --mode browser 退出码 2。"].join("\n"),
+  zh: [
+    "用法 / Usage:",
+    "  distilly consent <grant|list|verify|revoke|prune> [--json]",
+    "",
+    "子命令 / Subcommands:",
+    "  distilly consent grant --scope collect:x:browser [--ttl <minutes>] [--note <text>]",
+    "  distilly consent list",
+    "  distilly consent verify --token <token> --scope collect:x:browser",
+    "  distilly consent revoke --token <token>",
+    "  distilly consent prune",
+    "",
+    "同意令牌存在 ~/.distilly/consent.json；没有令牌时 collect --mode browser 退出码 2。",
+  ].join("\n"),
   en: ["Distilly consent — grant, list, verify, revoke or prune the computer-use consent tokens kept in ~/.distilly/consent.json."].join("\n"),
   async run({ argv, json, reporter }) {
     return runModule(() => import("../consent.mjs"), argv, { json, reporter });
