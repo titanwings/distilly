@@ -29,7 +29,8 @@
  *  - **LinkedIn** — `Connections.csv`, `Messages.csv`, `Invitations.csv`.
  */
 
-import { basename, extname } from "node:path";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { basename, extname, join, relative, resolve } from "node:path";
 
 import {
   DEFAULT_MAX_MEMBER_BYTES,
@@ -731,7 +732,7 @@ export function extractLinkedInExport(members) {
 
   for (const { pattern, dataset, kind } of known) {
     for (const member of membersByName(members, pattern)) {
-      const { rows, header, preamble, warnings: csvWarnings } = parseCsv(member.text);
+      const { rows, header, preamble, warnings: csvWarnings } = readCsvTable(member.text);
       warnings.push(...csvWarnings);
       if (header.length === 0) {
         warnings.push(`${member.path}: no header row was found and the file was skipped`);
@@ -805,7 +806,8 @@ export function extractLinkedInExport(members) {
  *            byteEnd: number}>, header: string[], preamble: number,
  *            warnings: string[]}}
  */
-export function parseCsv(text, options = {}) {
+/** Structured form: rows carry their byte range, used by the Takeout/LinkedIn extractors. */
+function readCsvTable(text, options = {}) {
   const warnings = [];
   const rows = [];
   let index = 0;
@@ -986,7 +988,7 @@ export function extractTakeout(members, options = {}) {
   });
   for (const member of leftovers) {
     if (/\.csv$/i.test(member.archivePath)) {
-      const { rows, header, warnings: csvWarnings } = parseCsv(member.text);
+      const { rows, header, warnings: csvWarnings } = readCsvTable(member.text);
       warnings.push(...csvWarnings);
       if (header.length === 0 || rows.length === 0) {
         warnings.push(`${member.path}: the CSV had no usable rows`);
@@ -1144,8 +1146,42 @@ const EXTRACTORS = {
  * @returns {{type: string, reasons: string[], documents: Array<object>,
  *            warnings: string[], skipped: Array<{member: string, why: string}>}}
  */
-export function parseArchive(members, options = {}) {
-  if (!Array.isArray(members) || members.length === 0) {
+/**
+ * Normalise whatever the caller has into `ArchiveMember[]`.
+ *
+ * The tests (and the CLI) hand over a **path** — a directory of exports, or a
+ * single `.zip`. The extractors want members. Accepting both keeps the entry
+ * point usable without every caller re-implementing the walk.
+ */
+function archiveMembersFrom(input, options = {}) {
+  if (Array.isArray(input)) return input;
+  if (typeof input === "string") {
+    const target = resolve(input);
+    const stats = statSync(target);
+    if (stats.isDirectory()) {
+      const files = [];
+      const walk = (dir) => {
+        for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+          if (entry.name.startsWith(".")) continue;
+          const full = join(dir, entry.name);
+          if (entry.isDirectory()) walk(full);
+          else files.push({ relativePath: relative(target, full), bytes: readFileSync(full) });
+        }
+      };
+      walk(target);
+      return directoryArchive(files, { ...options, archiveName: options.archiveName ?? basename(target) });
+    }
+    return readArchiveMembers(readFileSync(target), { ...options, archiveName: options.archiveName ?? basename(target) });
+  }
+  // A SourceFile (or anything with bytes): read it as a container.
+  const bytes = input?.bytes ?? input?.raw ?? null;
+  if (bytes !== null) return readArchiveMembers(bytes, options);
+  return [];
+}
+
+export function parseArchive(input, options = {}) {
+  const members = archiveMembersFrom(input, options);
+  if (members.length === 0) {
     throw new InputError("an archive needs at least one member");
   }
   const detected = options.type
@@ -1179,7 +1215,17 @@ export function parseArchive(members, options = {}) {
     type: detected.type,
     reasons: detected.reasons,
     documents,
-    warnings: result.warnings ?? [],
+    // A flat view of the same thing: every member's records in one list, and the
+    // members no extractor claimed reported as warnings. `documents` stays
+    // because `harvest` records one ledger entry per sub-source.
+    entries: documents.flatMap((document) => document.entries ?? []),
+    warnings: [
+      ...(result.warnings ?? []),
+      ...skipped.map((entry) => ({
+        code: "archive/unsupported-member",
+        message: `${entry.member}: ${entry.why}`,
+      })),
+    ],
     skipped,
     owner: result.owner ?? null,
   };
@@ -1289,4 +1335,18 @@ export function parseArchiveFile(bytes, options = {}) {
     throw new UnrecognizedFormatError(`${archiveName} is an empty zip container`, { members: [] });
   }
   return null;
+}
+
+/**
+ * CSV → rows of cells (`string[][]`), quoted fields and doubled quotes handled.
+ *
+ * The structured form (`readCsvTable`) is what the extractors need internally;
+ * this is the shape a caller gets, and what `tests/parse-archive.test.mjs` pins.
+ */
+export function parseCsv(text, options = {}) {
+  const { header, rows } = readCsvTable(text, options);
+  // The header is a row of the file, so it is a row of the result: the structured
+  // form keeps it aside because the extractors map columns, but a caller asking
+  // for "the rows" means every line.
+  return [header, ...rows.map((row) => row.cells)];
 }

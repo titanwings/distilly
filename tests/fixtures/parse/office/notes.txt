@@ -1,0 +1,4 @@
+Meeting notes
+
+Nothing here is a zip container or a PDF, so the office parser must refuse it
+by name instead of returning an empty document.
