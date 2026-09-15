@@ -719,6 +719,7 @@ export function collectBrowser(options = {}) {
     scope = BROWSER_SCOPE,
     consentToken,
     capturePath,
+    urls = [],
     label,
     target,
     producer = "host:computer-use",
@@ -823,6 +824,10 @@ export function collectBrowser(options = {}) {
     sha256: stored.sha256,
     credentialed: false,
     method: "browser-host",
+    // The page the host captured. One capture is one page, so `url` is exact; a
+    // multi-page hand-over keeps them in the receipt and leaves `url` null
+    // rather than naming an arbitrary one of them.
+    url: urls.length === 1 ? urls[0] : null,
     provenance: { method: "browser-host", producer, confidence: "host-reported" },
     consent: consentBlock,
     warnings: [],
@@ -839,6 +844,7 @@ export function collectBrowser(options = {}) {
       person: person ?? null,
       target: target ?? null,
       consent: consentBlock,
+      urls: [...urls],
       outputs: [{ path: stored.path, sha256: stored.sha256, bytes: stored.bytes, kind: "raw" }],
       ledger: { path: ledger.path, added: ledger.added, total: ledger.total },
       provenance: entry.provenance,
@@ -932,6 +938,10 @@ export async function runCollectCli(argv, io = {}) {
     resume: !flags["no-resume"],
     consentToken: flags.consent,
     capturePath: flags.capture,
+    // `--url` is repeatable: the host is told which pages to capture, and the
+    // receipt has to name them back, otherwise "what did this consent actually
+    // authorise" is unanswerable after the fact.
+    urls: flags.url === undefined ? [] : [].concat(flags.url),
     label: flags.label,
     target: flags.target,
     sleep: io.sleep,

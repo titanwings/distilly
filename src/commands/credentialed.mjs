@@ -42,14 +42,44 @@ async function capture(fn) {
   }
 }
 
+/**
+ * The first JSON object in captured stdout, ignoring whatever follows it.
+ *
+ * A channel module emits its receipt and then keeps printing human lines
+ * (`granted …`, `token: …`). Parsing "from the first brace to the end of the
+ * buffer" therefore failed on the trailing prose, and the caller quietly fell
+ * back to an empty default receipt — so `consent grant --json` reported
+ * `ok: true` with no `action`, no `grants` and no `outputs`, while the real
+ * receipt had been written. Cutting at the matching brace keeps the receipt.
+ */
 function parseReceiptFrom(text) {
   const start = text.indexOf("{");
   if (start === -1) return null;
-  try {
-    return JSON.parse(text.slice(start));
-  } catch {
-    return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = start; index < text.length; index += 1) {
+    const character = text[index];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === '"') inString = false;
+      continue;
+    }
+    if (character === '"') inString = true;
+    else if (character === "{") depth += 1;
+    else if (character === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        try {
+          return JSON.parse(text.slice(start, index + 1));
+        } catch {
+          return null;
+        }
+      }
+    }
   }
+  return null;
 }
 
 function forward(text, write) {
@@ -60,11 +90,20 @@ async function runModule(load, argv, { json, reporter }) {
   const module = await load();
   const entry = module.runCollectCli ?? module.runConsentCli ?? module.runTranscribeCli;
   if (typeof entry !== "function") throw new Error("module exposes no CLI entry point");
-  const { result, out, err } = await capture(() => entry(argv, {}));
-  if (!json) {
-    forward(out, (line) => reporter.line(line));
-    forward(err, (line) => reporter.warn(line));
-  }
+  // The dispatcher strips the global `--json` before handing argv to a command,
+  // but these modules parse their own flags and only emit a receipt when they see
+  // it. Without this, `--json` reached the CLI and never reached the module: it
+  // printed prose, `parseReceiptFrom` found no object, and the caller fell back to
+  // an empty default receipt (`ok: true`, no action, no grants, no outputs).
+  const moduleArgv = json && !argv.includes("--json") ? [...argv, "--json"] : argv;
+  const { result, out, err } = await capture(() => entry(moduleArgv, { json }));
+  // Human prose from a channel module goes to stderr in `--json` mode (stdout is
+  // the receipt alone), so stdout lines are only forwarded in prose mode. Stderr
+  // is forwarded either way: that is where the module puts the remedy
+  // ("waiting for user consent … fix: distilly consent grant"), and swallowing it
+  // left a failure with a non-zero exit and no explanation.
+  if (!json) forward(out, (line) => reporter.line(line));
+  forward(err, (line) => reporter.warn(line));
   const receipt = result?.receipt ?? parseReceiptFrom(out) ?? undefined;
   // A channel module signals an early failure by returning the **exit code** (a
   // number) rather than a result object — `runCollectCli` returns 1 when the key
