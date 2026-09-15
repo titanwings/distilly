@@ -1,10 +1,13 @@
 name: CI
 
 on:
+  # The per-feature PRs are a stack whose bases are other `ds/*` branches; with the
+  # trigger list limited to the integration branches, none of them could ever run CI.
   push:
-    branches: [dot-skill-test, dot-skill, main]
+    branches: [dot-skill-test, dot-skill, main, 'ds/**']
   pull_request:
-    branches: [dot-skill-test, dot-skill, main]
+    branches: [dot-skill-test, dot-skill, main, 'ds/**']
+  workflow_dispatch:
 
 jobs:
   test:
