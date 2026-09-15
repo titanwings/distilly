@@ -147,12 +147,14 @@ export const CHARACTER_PRESETS = {
         required_review_files: ["research_audit.md", "synthesis.md", "validation.md"],
       },
     },
+    // v2: the research helpers are commands now, not Python scripts. The user
+    // brings subtitles or an X archive; nothing downloads media on its own.
     research_tools: {
-      public_x_posts: "tools/research/xquik_public_posts.py",
-      subtitle_downloader: "tools/research/download_subtitles.sh",
-      subtitle_cleaner: "tools/research/srt_to_transcript.py",
-      research_merger: "tools/research/merge_research.py",
-      quality_check: "tools/research/quality_check.py",
+      public_x_posts: "distilly collect x --mode api",
+      subtitle_files: "distilly parse-subtitle <file>",
+      transcribe: "distilly transcribe <media>",
+      retrospection: "distilly retrospect",
+      quality_gate: "distilly doctor",
     },
     legacy_storage_root: "skills/celebrity",
     skill_name_prefix: "celebrity",

@@ -18,6 +18,8 @@ import {
   slugify,
   updateSkill,
 } from "../src/skill/writer.mjs";
+import { SCHEMA_VERSION } from "../src/skill/schema.mjs";
+import { PLANNED, listCommands } from "../src/commands/index.mjs";
 import { backupCurrentVersion, rollback } from "../src/skill/versions.mjs";
 import { getCharacterPreset, getResearchProfilePreset, resolveExistingStorageRoot } from "../src/skill/presets.mjs";
 import { validatePathSegment } from "../src/skill/schema.mjs";
@@ -77,7 +79,7 @@ test("create colleague uses portable names and adds the engine schema", () => {
     const workSkill = readFileSync(join(skillDir, "work_skill.md"), "utf8");
     const personaSkill = readFileSync(join(skillDir, "persona_skill.md"), "utf8");
 
-    assert.equal(savedMeta.schema_version, "3");
+    assert.equal(savedMeta.schema_version, SCHEMA_VERSION, "the engine stamps its current schema version");
     assert.equal(savedMeta.kind, "meta-skill");
     assert.equal(savedMeta.character, "colleague");
     assert.equal(savedMeta.preset, "distilly.colleague.v1");
@@ -511,8 +513,21 @@ test("character prompt bundles exist", () => {
       if (typeof promptPath !== "string" || !promptPath.startsWith("prompts/")) continue;
       assert.ok(existsSync(join(projectRoot, promptPath)), `missing prompt file for ${character}: ${promptPath}`);
     }
-    for (const toolPath of Object.values(preset.research_tools ?? {})) {
-      assert.ok(existsSync(join(projectRoot, toolPath)), `missing research tool for ${character}: ${toolPath}`);
+    // v2: research tools are CLI commands; anything that is still a path must
+    // exist, and every command must be registered (or at least planned).
+    const knownCommands = new Set([...listCommands(), ...Object.keys(PLANNED)]);
+    for (const [tool, value] of Object.entries(preset.research_tools ?? {})) {
+      if (typeof value !== "string") continue;
+      if (!value.startsWith("distilly ")) {
+        assert.ok(existsSync(join(projectRoot, value)), `missing research tool for ${character}: ${value}`);
+        continue;
+      }
+      const [first, second] = value.slice("distilly ".length).split(" ");
+      const resolved = knownCommands.has(`${first} ${second}`) ? `${first} ${second}` : first;
+      assert.ok(
+        knownCommands.has(resolved),
+        `${character}.research_tools.${tool} names an unregistered command: ${value}`,
+      );
     }
     for (const profileName of Object.keys(preset.research_profiles ?? {})) {
       const profile = getResearchProfilePreset(character, profileName);
