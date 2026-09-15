@@ -32,11 +32,11 @@
  */
 
 import { readFileSync, statSync } from "node:fs";
+import { inflateRawSync } from "node:zlib";
 import { basename, extname } from "node:path";
 import {
   assignAnchors,
   assignAnchorsToText,
-  buildSubAnchors,
   decodeBuffer,
   parseAnchor,
   verifyByteConservation,
@@ -584,70 +584,525 @@ export function pick(object, keys) {
 }
 
 /* ------------------------------------------------------------------ */
-/* re-exported anchor plumbing                                         */
+/* zip containers                                                      */
 /* ------------------------------------------------------------------ */
 
-export { assignAnchors, buildSubAnchors, parseAnchor };
+const ZIP_LOCAL_SIG = 0x04034b50;
+const ZIP_CENTRAL_SIG = 0x02014b50;
+const ZIP_EOCD_SIG = 0x06054b50;
+const ZIP_EOCD64_SIG = 0x06064b50;
+const ZIP_EOCD64_LOCATOR_SIG = 0x07064b50;
+
+function toBuffer(bytes) {
+  if (Buffer.isBuffer(bytes)) return bytes;
+  if (bytes instanceof Uint8Array) return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (bytes instanceof ArrayBuffer) return Buffer.from(bytes);
+  throw new TypeError("expected a Buffer, Uint8Array or ArrayBuffer");
+}
 
 /**
- * Run `assignAnchors` over a set of leaf records, then attach sub-anchors.
+ * Read a ZIP central directory.
  *
- * Every parser ends with this call. `content` must contain every scalar worth
- * reading; the leaf records supply the raw byte ranges that make the resulting
- * anchors resolvable.
+ * Hand-written rather than pulled from a dependency because the deliverable is
+ * zero-dependency, and because an archive parser needs the *member list* even
+ * when it never inflates a byte: an X export, a Takeout dump and a `.docx` are
+ * all "which members exist?" questions first.
+ *
+ * Every entry carries the byte range of its local header and of its data, so a
+ * caller that reads a member can say where in the container it came from.
+ *
+ * Deliberately not supported, and reported as `warnings` rather than guessed at:
+ * encrypted members and members larger than `maxMemberBytes`.
+ *
+ * @param {Uint8Array} bytes
+ * @param {{maxMemberBytes?: number, maxMembers?: number}} [options]
+ * @returns {{entries: Array<object>, comment: string, warnings: string[],
+ *            zip64: boolean}}
+ */
+export function readZipDirectory(bytes, options = {}) {
+  const buffer = toBuffer(bytes);
+  const maxMemberBytes = options.maxMemberBytes ?? DEFAULT_MAX_MEMBER_BYTES;
+  const maxMembers = options.maxMembers ?? 200_000;
+  const warnings = [];
+
+  const eocd = findEndOfCentralDirectory(buffer);
+  if (!eocd) {
+    throw new UnrecognizedFormatError(
+      "not a zip container: no End Of Central Directory record in the last 65 557 bytes",
+    );
+  }
+
+  let centralOffset = eocd.centralOffset;
+  let centralSize = eocd.centralSize;
+  let entryCount = eocd.entryCount;
+  let zip64 = false;
+
+  if (centralOffset === 0xffffffff || entryCount === 0xffff || centralSize === 0xffffffff) {
+    const zip64Eocd = findZip64EndOfCentralDirectory(buffer, eocd.offset);
+    if (zip64Eocd) {
+      centralOffset = Number(zip64Eocd.centralOffset);
+      centralSize = Number(zip64Eocd.centralSize);
+      entryCount = Number(zip64Eocd.entryCount);
+      zip64 = true;
+    } else {
+      warnings.push("the End Of Central Directory claims Zip64 sizes but no Zip64 record was found; the 32-bit values were used");
+    }
+  }
+
+  if (centralOffset + centralSize > buffer.length) {
+    throw new UnrecognizedFormatError(
+      `zip central directory runs past the end of the file (offset ${centralOffset} + ${centralSize} > ${buffer.length})`,
+    );
+  }
+  if (entryCount > maxMembers) {
+    warnings.push(`the container declares ${entryCount} members; only the first ${maxMembers} were read`);
+    entryCount = maxMembers;
+  }
+
+  const entries = [];
+  let cursor = centralOffset;
+  while (cursor + 46 <= buffer.length && entries.length < entryCount) {
+    if (buffer.readUInt32LE(cursor) !== ZIP_CENTRAL_SIG) {
+      warnings.push(`central directory entry ${entries.length + 1} at byte ${cursor} does not start with the expected signature; the rest of the directory was skipped`);
+      break;
+    }
+    const flags = buffer.readUInt16LE(cursor + 8);
+    const method = buffer.readUInt16LE(cursor + 10);
+    const dosTime = buffer.readUInt16LE(cursor + 12);
+    const dosDate = buffer.readUInt16LE(cursor + 14);
+    const crc32Value = buffer.readUInt32LE(cursor + 16);
+    let compressedSize = buffer.readUInt32LE(cursor + 20);
+    let uncompressedSize = buffer.readUInt32LE(cursor + 24);
+    const nameLength = buffer.readUInt16LE(cursor + 28);
+    const extraLength = buffer.readUInt16LE(cursor + 30);
+    const commentLength = buffer.readUInt16LE(cursor + 32);
+    let localOffset = buffer.readUInt32LE(cursor + 42);
+    const rawName = buffer.subarray(cursor + 46, cursor + 46 + nameLength);
+    const extra = buffer.subarray(cursor + 46 + nameLength, cursor + 46 + nameLength + extraLength);
+
+    if ((flags & 0x0001) !== 0) {
+      warnings.push(`member ${decodeZipName(rawName, flags)} is encrypted and was skipped`);
+      cursor += 46 + nameLength + extraLength + commentLength;
+      continue;
+    }
+
+    // Zip64 extra field (0x0001) overrides whichever 32-bit values are saturated.
+    if (uncompressedSize === 0xffffffff || compressedSize === 0xffffffff || localOffset === 0xffffffff) {
+      const z64 = readZip64Extra(extra);
+      if (z64) {
+        uncompressedSize = z64.uncompressedSize ?? uncompressedSize;
+        compressedSize = z64.compressedSize ?? compressedSize;
+        localOffset = z64.localOffset ?? localOffset;
+        zip64 = true;
+      }
+    }
+
+    const name = decodeZipName(rawName, flags);
+    const entry = {
+      name,
+      flags,
+      method,
+      crc32: crc32Value,
+      compressedSize,
+      uncompressedSize,
+      localOffset,
+      dosTime,
+      dosDate,
+      mtime: dosToIso(dosDate, dosTime),
+      directory: name.endsWith("/"),
+      centralOffset: cursor,
+      extraBytes: extra.length,
+    };
+    if (entry.uncompressedSize > maxMemberBytes) {
+      warnings.push(`member ${name} declares ${entry.uncompressedSize} bytes, above the ${maxMemberBytes} byte limit; it is listed but will not be inflated`);
+      entry.skipped = "too-large";
+    }
+    entries.push(entry);
+    cursor += 46 + nameLength + extraLength + commentLength;
+  }
+
+  if (entries.length === 0 && entryCount > 0) {
+    throw new UnrecognizedFormatError("the zip container has no readable members");
+  }
+
+  return {
+    entries,
+    comment: buffer.subarray(eocd.offset + 22, eocd.offset + 22 + eocd.commentLength).toString("utf8"),
+    warnings,
+    zip64,
+  };
+}
+
+function findEndOfCentralDirectory(buffer) {
+  // The comment is at most 65 535 bytes, so the record starts within the last
+  // 22 + 65 535 bytes.
+  const lowest = Math.max(0, buffer.length - 22 - 0xffff);
+  for (let offset = buffer.length - 22; offset >= lowest; offset -= 1) {
+    if (buffer.readUInt32LE(offset) !== ZIP_EOCD_SIG) continue;
+    const commentLength = buffer.readUInt16LE(offset + 20);
+    if (offset + 22 + commentLength > buffer.length) continue;
+    return {
+      offset,
+      entryCount: buffer.readUInt16LE(offset + 10),
+      centralSize: buffer.readUInt32LE(offset + 12),
+      centralOffset: buffer.readUInt32LE(offset + 16),
+      commentLength,
+    };
+  }
+  return null;
+}
+
+function findZip64EndOfCentralDirectory(buffer, eocdOffset) {
+  const locatorOffset = eocdOffset - 20;
+  if (locatorOffset < 0 || buffer.readUInt32LE(locatorOffset) !== ZIP_EOCD64_LOCATOR_SIG) return null;
+  const recordOffset = Number(buffer.readBigUInt64LE(locatorOffset + 8));
+  if (recordOffset + 56 > buffer.length || buffer.readUInt32LE(recordOffset) !== ZIP_EOCD64_SIG) return null;
+  return {
+    entryCount: buffer.readBigUInt64LE(recordOffset + 32),
+    centralSize: buffer.readBigUInt64LE(recordOffset + 40),
+    centralOffset: buffer.readBigUInt64LE(recordOffset + 48),
+  };
+}
+
+function readZip64Extra(extra) {
+  let cursor = 0;
+  while (cursor + 4 <= extra.length) {
+    const id = extra.readUInt16LE(cursor);
+    const size = extra.readUInt16LE(cursor + 2);
+    const body = extra.subarray(cursor + 4, cursor + 4 + size);
+    if (id === 0x0001 && body.length >= 8) {
+      const result = {};
+      let at = 0;
+      if (body.length >= at + 8) {
+        result.uncompressedSize = Number(body.readBigUInt64LE(at));
+        at += 8;
+      }
+      if (body.length >= at + 8) {
+        result.compressedSize = Number(body.readBigUInt64LE(at));
+        at += 8;
+      }
+      if (body.length >= at + 8) {
+        result.localOffset = Number(body.readBigUInt64LE(at));
+      }
+      return result;
+    }
+    cursor += 4 + size;
+  }
+  return null;
+}
+
+function decodeZipName(rawName, flags) {
+  const utf8 = (flags & 0x0800) !== 0;
+  if (utf8) {
+    return new TextDecoder("utf-8", { fatal: false }).decode(rawName).replace(/^\uFEFF/, "");
+  }
+  // No UTF-8 flag: the spec says CP437. Node cannot decode CP437, and decodeBuffer
+  // refuses to guess between GBK/Big5/Shift_JIS, so names are read as Latin-1 —
+  // which is byte-preserving — and callers match on structure, not on the label.
+  return new TextDecoder("latin1").decode(rawName);
+}
+
+function dosToIso(dosDate, dosTime) {
+  if (dosDate === 0 && dosTime === 0) return null;
+  const year = 1980 + ((dosDate >> 9) & 0x7f);
+  const month = ((dosDate >> 5) & 0x0f) || 1;
+  const day = (dosDate & 0x1f) || 1;
+  const hours = (dosTime >> 11) & 0x1f;
+  const minutes = (dosTime >> 5) & 0x3f;
+  const seconds = (dosTime & 0x1f) * 2;
+  const date = new Date(Date.UTC(year, month - 1, day, hours, minutes, seconds));
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+const CRC_TABLE = (() => {
+  const table = new Int32Array(256);
+  for (let index = 0; index < 256; index += 1) {
+    let value = index;
+    for (let bit = 0; bit < 8; bit += 1) {
+      value = value & 1 ? (value >>> 1) ^ 0xedb88320 : value >>> 1;
+    }
+    table[index] = value;
+  }
+  return table;
+})();
+
+/** CRC-32 (IEEE), used to check a zip member's integrity. */
+export function crc32(bytes) {
+  let crc = -1;
+  for (let index = 0; index < bytes.length; index += 1) {
+    crc = (crc >>> 8) ^ CRC_TABLE[(crc ^ bytes[index]) & 0xff];
+  }
+  return (crc ^ -1) >>> 0;
+}
+
+/**
+ * Inflate one member and verify its CRC-32.
+ *
+ * A CRC mismatch is *reported*, not fatal: the bytes are still returned, because
+ * silently dropping a damaged member loses data and silently accepting it hides
+ * corruption.
+ *
+ * @param {Uint8Array} bytes the whole container
+ * @param {object} entry an entry from `readZipDirectory`
+ * @returns {{data: Uint8Array, verified: boolean, warning: string|null,
+ *            dataStart: number, dataEnd: number}}
+ */
+export function readZipMember(bytes, entry, options = {}) {
+  const buffer = toBuffer(bytes);
+  const maxMemberBytes = options.maxMemberBytes ?? DEFAULT_MAX_MEMBER_BYTES;
+  if (entry.skipped === "too-large" || entry.uncompressedSize > maxMemberBytes) {
+    throw new InputError(`member ${entry.name} is larger than the ${maxMemberBytes} byte limit and was not inflated`);
+  }
+  if (entry.localOffset + 30 > buffer.length) {
+    throw new InputError(`member ${entry.name} points at byte ${entry.localOffset}, past the end of the container`);
+  }
+  if (buffer.readUInt32LE(entry.localOffset) !== ZIP_LOCAL_SIG) {
+    throw new InputError(`member ${entry.name} does not have a local file header at byte ${entry.localOffset}`);
+  }
+  const nameLength = buffer.readUInt16LE(entry.localOffset + 26);
+  const extraLength = buffer.readUInt16LE(entry.localOffset + 28);
+  const dataStart = entry.localOffset + 30 + nameLength + extraLength;
+  const dataEnd = dataStart + entry.compressedSize;
+  if (dataEnd > buffer.length) {
+    throw new InputError(`member ${entry.name} is truncated: it needs bytes ${dataStart}..${dataEnd} of a ${buffer.length} byte container`);
+  }
+  const raw = buffer.subarray(dataStart, dataEnd);
+
+  let data;
+  if (entry.method === 0) {
+    data = raw;
+  } else if (entry.method === 8) {
+    try {
+      data = inflateRawSync(raw, { maxOutputLength: maxMemberBytes });
+    } catch (error) {
+      throw new InputError(`member ${entry.name} could not be inflated: ${error.message}`);
+    }
+  } else {
+    throw new InputError(`member ${entry.name} uses compression method ${entry.method}; only stored (0) and deflate (8) are supported`);
+  }
+
+  const verified = crc32(data) === entry.crc32;
+  return {
+    data: new Uint8Array(data),
+    verified,
+    warning: verified
+      ? null
+      : `member ${entry.name} failed its CRC-32 check (header ${entry.crc32.toString(16)}, computed ${crc32(data).toString(16)}); the bytes are still returned`,
+    dataStart,
+    dataEnd,
+  };
+}
+
+/**
+ * Read a zip container into the plain `{name, bytes}` map most callers want.
+ * Entries that cannot be read become warnings, never exceptions: a damaged member
+ * must not cost the caller the other ninety-nine.
+ *
+ * @param {Uint8Array} bytes
+ * @param {{maxMemberBytes?: number, filter?: (entry: object) => boolean}} [options]
+ * @returns {{members: Map<string, Uint8Array>, entries: Array<object>,
+ *            warnings: string[], directory: object}}
+ */
+export function readZipMembers(bytes, options = {}) {
+  const directory = readZipDirectory(bytes, options);
+  const warnings = [...directory.warnings];
+  const members = new Map();
+  for (const entry of directory.entries) {
+    if (entry.directory) continue;
+    if (options.filter && !options.filter(entry)) continue;
+    try {
+      const member = readZipMember(bytes, entry, options);
+      if (member.warning) warnings.push(member.warning);
+      members.set(entry.name, member.data);
+    } catch (error) {
+      warnings.push(`${entry.name}: ${error.message}`);
+    }
+  }
+  return { members, entries: directory.entries, warnings, directory };
+}
+
+/* ------------------------------------------------------------------ */
+/* document assembly                                                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Assemble a document's readable text from per-record payloads.
+ *
+ * This is the function that makes the "no byte is lost" promise checkable.
+ * Every parser describes its output as records that each carry:
+ *
+ *   `byteStart` / `byteEnd`  where the record's payload sits in the raw file
+ *   `text`                   exactly the readable text of that payload
+ *
+ * The records are then concatenated into `content`. Each becomes one paragraph
+ * anchor `[k00NN]` (via `groupBy: "segment"`), and each becomes one sub-anchor
+ * `[k00NN:tM]` resolved by `recordDocument` in `src/knowledge/ledger.mjs`.
+ *
+ * Records that a parser synthesised from live objects rather than raw bytes must
+ * declare `synthetic: true`; those are listed in `syntheticRecords` so the entry
+ * can say so instead of quietly presenting derived text as source text.
  *
  * @param {object} input
  * @param {SourceFile} input.file
- * @param {string} input.content normalised, human readable text
- * @param {number} input.ledgerId numeric ledger index (1 → k0001)
- * @param {Array<{kind: string, text: string, byteStart: number, byteEnd: number}>} [input.entries]
- * @param {string[]} [input.warnings]
+ * @param {Array<{text: string, kind?: string, byteStart?: number, byteEnd?: number,
+ *                file?: string, label?: string, synthetic?: boolean}>} input.records
+ * @param {string} [input.separator]
  */
-export function finalizeDocument(input) {
-  const {
-    file,
-    content,
-    ledgerId,
-    entries = [],
-    warnings = [],
-    maxBlocks,
-    collapseSpaces,
-  } = input;
+export function assembleContent({ file, records, separator = "\n" }) {
+  const usable = [];
+  for (const record of records) {
+    const text = typeof record.text === "string" ? record.text : "";
+    if (text.trim() === "" && !record.keep) continue;
+    // Only the outer edges are trimmed: internal line structure is meaningful
+    // (a subtitle cue has two lines, a table row has cells) and is preserved.
+    usable.push({ ...record, text: text.replace(/^[ \t]+|[ \t]+$/g, "") });
+  }
+  const kept = usable.filter((record) => record.text.trim() !== "");
 
-  const raw = Buffer.from(content, "utf8");
-  const anchored = assignAnchors(raw, {
-    ...(maxBlocks ? { maxBlocks } : {}),
-    ...(collapseSpaces === undefined ? {} : { collapseSpaces }),
-  });
+  let cursor = 0;
+  const segments = [];
+  const entries = [];
+  const parts = [];
+  const syntheticRecords = [];
 
-  const kId = `k${String(ledgerId).padStart(4, "0")}`;
-  const anchors = buildSubAnchors(entries, kId).map((entry, index) => ({
-    ...entry,
-    byteStart: entries[index].byteStart ?? null,
-    byteEnd: entries[index].byteEnd ?? null,
-    file: entries[index].file ?? file.name,
+  for (const record of kept) {
+    if (cursor > 0) {
+      parts.push(separator);
+      cursor += separator.length;
+    }
+    const charStart = cursor;
+    parts.push(record.text);
+    cursor += record.text.length;
+    const charEnd = cursor;
+
+    segments.push({
+      charStart,
+      charEnd,
+      label: record.label ?? null,
+      // The record's span in the raw payload travels with the segment, so the
+      // ledger can report the exact bytes of a turn instead of guessing from the
+      // paragraph that happens to contain it.
+      byteStart: record.byteStart ?? null,
+      byteEnd: record.byteEnd ?? null,
+      file: record.file ?? file.name,
+    });
+    entries.push({
+      kind: record.kind ?? "item",
+      text: record.text,
+      label: record.label ?? null,
+      byteStart: record.byteStart ?? null,
+      byteEnd: record.byteEnd ?? null,
+      file: record.file ?? file.name,
+      synthetic: Boolean(record.synthetic),
+    });
+    if (record.synthetic) syntheticRecords.push(record.label ?? record.text.slice(0, 40));
+  }
+
+  return { content: parts.join(""), segments, entries, syntheticRecords };
+}
+
+/**
+ * Build `records[]` from slices of a decoded (not text-transformed) payload.
+ *
+ * Some formats — JSON, CSV, JSON-lines — keep their values verbatim in the raw
+ * payload, so the readable text *is* a byte range of the file. This helper is the
+ * one place those parsers convert a decoded character range into a record, which
+ * keeps the raw-byte mapping in a single implementation instead of six.
+ *
+ * @param {SourceFile} file
+ * @param {Array<{text: string, charStart: number, charEnd: number, kind?: string,
+ *                label?: string, file?: string, synthetic?: boolean}>} slices
+ */
+export function recordsFromCharSpans(file, slices) {
+  return slices.map((slice) => ({
+    kind: slice.kind ?? "item",
+    text: slice.text,
+    label: slice.label ?? null,
+    file: slice.file ?? file.name,
+    synthetic: slice.synthetic,
+    // `null` (not 0) when the payload does not contain the text: an offset of 0
+    // would claim the first byte of the file as the origin of unrelated text.
+    byteStart: slice.text === "" ? null : file.charToByte(slice.charStart),
+    byteEnd: slice.text === "" ? null : file.charToByte(slice.charEnd),
   }));
+}
+
+/**
+ * Deterministic JSON: stable key order (insertion order), 2-space indent.
+ * Used for shapes that go into receipts, so two runs over the same input
+ * produce the same bytes.
+ */
+export function stableJson(value) {
+  return JSON.stringify(value, null, 2);
+}
+
+/** Shorten a value for an error message; never throws on non-strings. */
+export function truncate(value, limit = 120) {
+  const text = String(value);
+  return text.length > limit ? `${text.slice(0, limit - 1)}…` : text;
+}
+
+/**
+ * Finish a parsed document: assemble the text, describe the raw files and hand
+ * everything to `recordDocument` through the shape `src/knowledge/ledger.mjs`
+ * expects. Parsers return this object; they never write to disk themselves.
+ *
+ * @param {object} input
+ * @param {string} input.parser
+ * @param {string|null} input.format detected format id, or null when unknown
+ * @param {string} input.kind ledger `kind`
+ * @param {string} input.source bucket name under `knowledge/raw/`
+ * @param {SourceFile|SourceFile[]} input.files
+ * @param {Array<object>} [input.records]
+ * @param {string} [input.content] pre-assembled content (skips `records`)
+ * @param {Array<object>} [input.segments]
+ * @param {Array<object>} [input.entries]
+ * @param {string[]} [input.warnings]
+ * @param {Array<{what: string, why: string}>} [input.dropped]
+ * @param {object} [input.meta]
+ * @param {string} [input.method]
+ * @param {object} [input.accounting]
+ */
+export function buildDocument(input) {
+  const files = Array.isArray(input.files) ? input.files : [input.files];
+  if (files.length === 0 || !files[0]) throw new TypeError("buildDocument requires at least one source file");
+
+  const assembled = input.records
+    ? assembleContent({ file: files[0], records: input.records, separator: input.separator })
+    : { content: input.content ?? "", segments: input.segments ?? [], entries: input.entries ?? [], syntheticRecords: [] };
 
   return {
-    text: anchored.text,
-    units: anchored.units.map((unit) => ({ ...unit, file: file.name })),
-    // Anchors live in the *parsed text*, not in `content`, so their byte ranges
-    // point back at the raw payload directly.
-    anchors,
-    warnings: [...warnings, ...anchored.warnings],
-    encoding: {
-      label: anchored.encoding,
-      bom: anchored.bom,
-      lossy: anchored.lossy,
-      bytes: anchored.byteLength,
-      unmappedTail: anchored.unmappedTail,
-    },
-    parse: {
-      file: file.name,
-      path: file.path,
-      charCount: content.length,
-      lineCount: content === "" ? 0 : content.split("\n").length,
-    },
-    ledgerId: kId,
+    parser: input.parser,
+    format: input.format ?? null,
+    kind: input.kind,
+    method: input.method ?? "local-file",
+    credentialed: Boolean(input.credentialed),
+    source: input.source,
+    origin: input.origin ?? files[0].path,
+    // `name` identifies the file inside the bucket and is what `units[].file`
+    // and `anchors[].file` refer to; it survives the trip through the ledger.
+    files: files.map((file) => ({ name: file.name, ...file.descriptor() })),
+    content: assembled.content,
+    segments: assembled.segments,
+    entries: assembled.entries,
+    groupBy: input.groupBy ?? (assembled.segments.length > 0 ? "segment" : "blank"),
+    maxBlocks: input.maxBlocks ?? 12,
+    // The detected payload encoding, surfaced so a receipt can say "this was
+    // read as GBK" instead of silently guessing.
+    fileEncoding: files[0]?.encoding ?? null,
+    bom: files[0]?.bom ?? null,
+    warnings: [
+      ...(input.warnings ?? []),
+      ...files.flatMap((file) => file.decodeWarnings ?? []),
+      ...assembled.syntheticRecords.map((label) => `text for ${label} was derived from a live record, not from raw bytes`),
+    ],
+    dropped: input.dropped ?? [],
+    syntheticRecords: assembled.syntheticRecords,
+    accounting: input.accounting ?? { model: "raw-bytes" },
+    meta: input.meta ?? {},
   };
 }
+
+/** Re-exported anchor plumbing, so parsers import from one place. */
+export { assignAnchors, assignAnchorsToText, buildDocument as finalizeDocument, parseAnchor, verifyByteConservation };
+

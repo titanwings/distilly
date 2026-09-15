@@ -427,11 +427,21 @@ function editableNormalize(decoded, options) {
       continue;
     }
     if (code === 0x0d) {
-      // CR or CRLF -> LF. The LF half contributes no character of its own; the
-      // resulting LF spans both bytes so the range stays gapless.
-      const isCrlf = text[index + 1] === "\n";
-      push("\n", start, isCrlf ? charEnd[index + 1] : end);
-      index += isCrlf ? 2 : 1;
+      // CR, CRLF, LFCR, NEL and the Unicode separators all become a single LF,
+      // whichever order they appear in. The bytes of every terminator character
+      // are folded into that one LF, so the character → byte map stays gapless
+      // and no `\r` can survive into an anchored paragraph.
+      let cursor = index + 1;
+      let lastEnd = end;
+      while (cursor < text.length) {
+        const next = text.codePointAt(cursor);
+        if (next === 0x0d || next === 0x0a) lastEnd = charEnd[cursor];
+        else if (next === 0x85 || next === 0x2028 || next === 0x2029) lastEnd = charEnd[cursor];
+        else break;
+        cursor += 1;
+      }
+      push("\n", start, lastEnd);
+      index = cursor;
       continue;
     }
     if (code === 0x0a || code === 0x85 || code === 0x2028 || code === 0x2029) {
@@ -1054,3 +1064,4 @@ export function conservationReport(fileOrigins, documents) {
   }
   return report;
 }
+

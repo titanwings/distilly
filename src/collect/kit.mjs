@@ -32,6 +32,12 @@ export class CollectFailure extends Error {
 
 export const DEFAULT_MAX_RETRIES = 4;
 export const DEFAULT_MAX_BACKOFF_MS = 60_000;
+/** 分页上限：给一个有限的默认值，避免一次采集把配额跑光。 */
+export const DEFAULT_MAX_PAGES = 10;
+/** 每页条数。Discord / Notion / Reddit 三个 API 的上限都是 100。 */
+export const DEFAULT_PAGE_SIZE = 100;
+/** 单次采集的消息上限。 */
+export const DEFAULT_MAX_MESSAGES = 200;
 
 export const sha256Hex = (bytes) => createHash("sha256").update(Buffer.from(bytes)).digest("hex");
 
