@@ -138,12 +138,17 @@ try {
       const base = id.split(':')[0];
       const detail = (entry.anchor_detail ?? []).find((d) => (d.anchor ?? d.id) === id) ?? {};
       if (!anchorIndex.has(base)) {
+        // 形状与 `scripts/blind-test.mjs` 的锚点索引保持一致：`source` 取账本的
+        // `kind`（subtitle / chat / doc …），`path` 指向归一化正文。原来这里取
+        // `entry.source`，而账本根本没有这个字段 —— 于是每个条目都因
+        // "evidence[].source is required" 报错，27 条一起红。
         anchorIndex.set(base, {
-          id: base,
+          id: entry.id ?? base,
           anchor: base,
-          source: entry.source ?? entry.origin ?? '',
-          kind: entry.kind ?? 'message',
-          path: raw ?? entry.locations?.text ?? '',
+          source: entry.kind ?? 'note',
+          kind: entry.kind ?? 'note',
+          path: `knowledge/${entry.locations?.text ?? 'index.json'}`,
+          at: entry.fetched_at ?? null,
         });
       }
       void detail;
@@ -154,16 +159,21 @@ try {
   const viewsDir = path.join(personDir, 'views');
   await mkdir(viewsDir, { recursive: true });
   await writeFile(path.join(viewsDir, `${person}.view.json`), `${JSON.stringify(view, null, 2)}\n`, 'utf8');
-  record('view 由派生证据机械构造', baseline.sections.length >= 7 && baseline.cited > 0,
-    `${baseline.sections.length} 段 / ${baseline.cited} 个锚点 / 缺口 ${baseline.gaps.length}`);
+  // 七段**都必须在场**（页面顺序是契约的一部分），填不出来的段渲染成「本节证据不足」
+  // 而不是被丢掉；缺口数量单独报出来，免得"7 段"这个数字掩盖了内容稀薄。
+  record('view 由派生证据机械构造', baseline.sections.length === 7 && baseline.cited > 0,
+    `${baseline.sections.length} 段 / ${baseline.cited} 个锚点 / 其中 ${baseline.gaps.length} 段记为缺口`);
 
-  const check = distilly(['view', 'check', '--person', person, '--json']);
+  // `--allow-missing`：验收语料没有绝对时间戳，时间线一段必然是缺口。缺口要
+  // 渲染成「本节证据不足」而不是被丢掉，所以这个开关是**声明**而非消音 ——
+  // 引用不存在锚点之类的真错误仍然会让 check 失败。
+  const check = distilly(['view', 'check', '--person', person, '--allow-missing', '--json']);
   record('view check 通过', check.status === 0, check.stderr.slice(0, 160));
 
-  const render1 = distilly(['view', 'render', '--person', person, '--json']);
+  const render1 = distilly(['view', 'render', '--person', person, '--allow-missing', '--json']);
   const htmlPath = path.join(viewsDir, `${person}.html`);
   const html1 = await readFile(htmlPath);
-  distilly(['view', 'render', '--person', person, '--json']);
+  distilly(['view', 'render', '--person', person, '--allow-missing', '--json']);
   const html2 = await readFile(htmlPath);
   record('render 两次产物字节相同', sha256(html1) === sha256(html2), `${html1.length} bytes`);
   const html = html1.toString('utf8');

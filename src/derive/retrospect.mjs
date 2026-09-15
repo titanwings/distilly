@@ -114,8 +114,17 @@ const ANCHOR_LEADING = /^\s*(k\d{4,}(?::t\d+)?)(?=\s|$)/;
 const LEADING_TIMESTAMP =
   /^\s*(\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?)\s*/;
 
+/**
+ * A bare timecode, as subtitle parsers render it ("00:00:01.000").
+ *
+ * It is consumed but does **not** become `at`: a timecode is an offset inside one
+ * file, not an instant on a calendar, and pretending otherwise would let a
+ * timeline claim dates the corpus never carried.
+ */
+const LEADING_TIMECODE = /^\s*(\d{1,3}:\d{2}:\d{2}(?:[.,]\d{1,3})?)\s*/;
+
 /** `林工：` / `interviewer: ` at the head of a turn. */
-const LEADING_SPEAKER = /^([^：:\n]{1,24})[：:]\s*/;
+const LEADING_SPEAKER = /^([^\d：:\n][^：:\n]{0,23})[：:]\s*/;
 
 // ---------------------------------------------------------------------------
 // deterministic primitives
@@ -380,6 +389,11 @@ function splitBlock(line) {
     at = parseTimestamp(stamp[1]);
     rest = rest.slice(stamp[0].length);
   }
+  // A subtitle timecode sits where a chat timestamp would; consume it before the
+  // speaker, or the speaker regex eats "00" out of "00:00:01.000 面试官：".
+  const timecode = LEADING_TIMECODE.exec(rest);
+  if (timecode) rest = rest.slice(timecode[0].length);
+
   let speaker = null;
   const prefix = LEADING_SPEAKER.exec(rest);
   if (prefix) {

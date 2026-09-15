@@ -194,7 +194,10 @@ function checkMeta(report, meta, slug) {
   }
 }
 
-function checkSections(report, sections, evidenceIndex) {
+function checkSections(report, sections, evidenceIndex, options = {}) {
+  const allowMissing = options.allowMissing === true;
+  const thin = (code, message, subject, evidence, fixes) =>
+    allowMissing ? report.warn(code, message, subject, evidence, fixes) : report.error(code, message, subject, evidence, fixes);
   if (!Array.isArray(sections)) {
     report.error(
       "VIEW_SECTIONS_MISSING",
@@ -304,7 +307,7 @@ function checkSections(report, sections, evidenceIndex) {
 
       const anchors = Array.isArray(item.anchors) ? item.anchors : null;
       if (!anchors || anchors.length === 0) {
-        report.error(
+        thin(
           "VIEW_ANCHOR_MISSING",
           `${itemPath} needs at least one evidence anchor`,
           { path: `${itemPath}.anchors`, identity: identity ?? text?.slice(0, 24) ?? null },
@@ -348,7 +351,7 @@ function checkSections(report, sections, evidenceIndex) {
       }
 
       if (section.kind === "timeline" && !isNonEmptyString(item.at)) {
-        report.error(
+        thin(
           "VIEW_TIMELINE_AT_MISSING",
           `${itemPath}.at is required for timeline entries`,
           { path: `${itemPath}.at`, identity: text?.slice(0, 24) ?? null },
@@ -651,6 +654,10 @@ export function normalizeView(raw) {
  * @param {{viewPath?: string, shareable?: boolean}} [options]
  */
 export function checkView(view, options = {}) {
+  // `allowMissing` is opt-in and narrow: it downgrades "a segment is thin" from
+  // error to warning, and nothing else. A claim that cites a nonexistent anchor is
+  // still an error with or without it.
+  const allowMissing = options.allowMissing === true;
   const report = new Report();
   const slug = expectedSlug(options.viewPath);
   const shareable = options.shareable === true;
@@ -668,7 +675,7 @@ export function checkView(view, options = {}) {
 
   checkMeta(report, view.meta, slug);
   const evidenceIndex = checkEvidence(report, view.evidence);
-  const sections = checkSections(report, view.sections, evidenceIndex);
+  const sections = checkSections(report, view.sections, evidenceIndex, { allowMissing });
   const privacy = checkPrivacy(report, view, evidenceIndex, shareable);
 
   const uncited = [...evidenceIndex.keys()].filter((anchor) => !sections.cited.has(anchor));

@@ -138,11 +138,15 @@ export function buildPayload(view, shareable) {
  */
 export function renderView(options) {
   const shareable = options.shareable === true;
+  // `renderView` re-runs the same check before writing, so the opt-in has to travel
+  // with it: otherwise a page that passed `view check --allow-missing` still fails
+  // to render, and the user sees a check error they just satisfied.
+  const allowMissing = options.allowMissing === true;
   const templatePath = resolve(options.templatePath ?? TEMPLATE_PATH);
   const document = loadViewDocument(options.viewPath);
   const slug = expectedSlug(document.path) ?? (isPlainObject(document.view.meta) ? document.view.meta.slug : null);
 
-  const report = checkView(document.view, { viewPath: document.path, shareable });
+  const report = checkView(document.view, { viewPath: document.path, shareable, allowMissing });
   if (!report.ok) {
     throw new ViewError(
       `view.json failed view check with ${report.errors.length} error(s); fix them before rendering`,

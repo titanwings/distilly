@@ -182,6 +182,7 @@ export function baselineSections({ claims, anchors }) {
       const usable = [...cited].filter((anchor) => anchors.has(anchor));
       if (parts.length === 0 || usable.length === 0) {
         gaps.push({ section: section.id, reason: "no derived statistics to anchor a one-line portrait" });
+        sections.push(gapSection(section, "派生统计不足以支撑一句话画像"));
         continue;
       }
       sections.push({
@@ -207,12 +208,11 @@ export function baselineSections({ claims, anchors }) {
       }
     }
     if (items.length === 0) {
-      gaps.push({
-        section: section.id,
-        reason: section.timeline
-          ? "no derived phase carries a date; a timeline is not invented to fill the segment"
-          : `the derivation produced no claims for ${section.from.join("/")}`,
-      });
+      const reason = section.timeline
+        ? "no derived phase carries a date; a timeline is not invented to fill the segment"
+        : `the derivation produced no claims for ${section.from.join("/")}`;
+      gaps.push({ section: section.id, reason });
+      sections.push(gapSection(section, reason));
       continue;
     }
     sections.push({ id: section.id, kind: section.kind, title: section.title, items });
@@ -231,6 +231,24 @@ export function baselineSections({ claims, anchors }) {
     };
   });
   return { sections, gaps, evidence, cited: cited.size };
+}
+
+export /**
+ * A segment the derivation could not fill.
+ *
+ * The page order is fixed and every authored segment must be present, so a gap is
+ * rendered *as a gap* — a segment that says so in words and cites nothing —
+ * rather than dropped. Dropping it would shift every later segment out of its
+ * contract position, and the reader would never learn that something is thin.
+ */
+function gapSection(section, reason) {
+  return {
+    id: section.id,
+    kind: section.kind,
+    title: section.title,
+    items: [{ text: `本节证据不足：${reason}。`, confidence: "low", anchors: [] }],
+    ...(section.timeline ? { gap: true } : {}),
+  };
 }
 
 export function buildView({ slug, sections, evidence }) {

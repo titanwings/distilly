@@ -23,13 +23,16 @@ const OPTIONS = {
   root: { type: "string", value: "dir" },
   out: { type: "string", value: "path" },
   shareable: { type: "boolean" },
+  // 声明「我知道这里有缺口」：只把「本节稀薄」从错误降为警告
+  "allow-missing": { type: "boolean" },
 };
 
 function parseViewArgs(argv) {
-  const options = { slug: null, file: null, root: process.cwd(), out: null, shareable: false };
+  const options = { slug: null, file: null, root: process.cwd(), out: null, shareable: false, allowMissing: false };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--shareable") options.shareable = true;
+    else if (arg === "--allow-missing") options.allowMissing = true;
     else if (arg === "--person" || arg === "--slug" || arg === "--file" || arg === "--root" || arg === "--out") {
       const value = argv[index + 1];
       if (!value) throw new Error(`${arg} requires a value`);
@@ -88,7 +91,7 @@ const checkCommand = {
     const options = parseViewArgs(argv);
     const viewPath = resolveViewPath(options);
     const document = loadViewDocument(viewPath);
-    const report = checkView(document.view, { viewPath: document.path, shareable: options.shareable });
+    const report = checkView(document.view, { viewPath: document.path, shareable: options.shareable, allowMissing: options.allowMissing });
     const normalized = normalizeView(document.view).view;
     const receipt = {
       ...createReceipt("view check", {
@@ -124,6 +127,7 @@ const renderCommand = {
     const viewPath = resolveViewPath(options);
     try {
       const result = renderView({
+        allowMissing: options.allowMissing,
         viewPath,
         outPath: options.out ? resolve(options.out) : undefined,
         shareable: options.shareable,

@@ -336,6 +336,16 @@ export function parseSubtitle(file, options = {}) {
       at: formatTimecode(cue.start),
       speaker: cue.speaker ?? null,
       at: formatTimecode(cue.start),
+      speaker: cue.speaker ?? null,
+      at: formatTimecode(cue.start),
+      speaker: cue.speaker ?? null,
+      at: formatTimecode(cue.start),
+      speaker: cue.speaker ?? null,
+      at: formatTimecode(cue.start),
+      speaker: cue.speaker ?? null,
+      at: formatTimecode(cue.start),
+      speaker: cue.speaker ?? null,
+      at: formatTimecode(cue.start),
     })),
   );
 

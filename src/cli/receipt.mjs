@@ -101,6 +101,14 @@ export function createReporter(json, { stdout = process.stdout, stderr = process
     warn(text) {
       stderr.write(`${text}\n`);
     },
+    /**
+     * A diagnostic that always goes to stderr, in both modes. Command output is
+     * `line()`; this is for "why the command failed", which must never pollute
+     * the machine channel — and must still be visible when `--json` is set.
+     */
+    error(text) {
+      stderr.write(`${text}\n`);
+    },
     /** Write the receipt last so `JSON.parse(stdout)` sees a single object. */
     finish(receipt) {
       if (!json) return;
