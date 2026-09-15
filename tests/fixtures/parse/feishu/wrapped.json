@@ -1,0 +1,15 @@
+{
+  "code": 0,
+  "data": [
+    {
+      "sender_name": "赵六",
+      "content": "先别改代码。",
+      "timestamp": "2024-03-02T09:00:00Z"
+    },
+    {
+      "sender_name": "赵六",
+      "content": "先把账翻出来。",
+      "timestamp": "2024-03-02T09:01:00Z"
+    }
+  ]
+}
