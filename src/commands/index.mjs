@@ -24,6 +24,7 @@
  */
 
 import { CliError } from "../cli/receipt.mjs";
+import { listAgents } from "../hosts/agents.mjs";
 
 /**
  * Lazily created so the command modules can be imported at the bottom of this
@@ -162,8 +163,17 @@ export function renderHelp({ version, binary = "distilly" } = {}) {
     `  ${binary} <命令> [选项]`,
     `  ${binary} --help | --version`,
     "",
+    `宿主 / hosts：${listAgents().join(", ")}`,
+    `  用 ${binary} install <host> 安装；别名见 ${binary} install --help`,
+    "",
     "已实现：",
-    ...implemented.map((command) => `  ${command.usage.padEnd(46)}${command.summary.split(" / ")[0]}`),
+    // `padEnd` only pads: a usage longer than the column ran straight into its
+    // summary with no separator at all ("… [--json]需要凭据的渠道采集").
+    ...implemented.map((command) => {
+      const usage = command.usage.padEnd(46);
+      const gap = usage.length > command.usage.length ? "" : "  ";
+      return `  ${usage}${gap}${command.summary.split(" / ")[0]}`;
+    }),
     "",
     "契约中已冻结、由其他分支交付：",
     `  ${plannedNames.join(", ")}`,
@@ -186,8 +196,15 @@ export function renderHelp({ version, binary = "distilly" } = {}) {
     `  ${binary} <command> [options]`,
     `  ${binary} --help | --version`,
     "",
+    `Hosts: ${listAgents().join(", ")}`,
+    `  install with ${binary} install <host>; aliases in ${binary} install --help`,
+    "",
     "Implemented:",
-    ...implemented.map((command) => `  ${command.usage.padEnd(46)}${command.summary.split(" / ")[1] ?? command.summary}`),
+    ...implemented.map((command) => {
+      const usage = command.usage.padEnd(46);
+      const gap = usage.length > command.usage.length ? "" : "  ";
+      return `  ${usage}${gap}${command.summary.split(" / ")[1] ?? command.summary}`;
+    }),
     "",
     "Frozen by the contract, delivered by other branches:",
     `  ${plannedNames.join(", ")}`,

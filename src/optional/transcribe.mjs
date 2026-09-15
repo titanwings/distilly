@@ -392,7 +392,9 @@ export async function transcribe(options = {}) {
       const ledger = appendLedger(knowledgeDir, [
         {
           id: `${COMMAND}:${slug(name)}:text`,
-          kind: "text",
+          // `transcript` is in `ENTRY_KINDS`; `text` is not, so this entry used to
+          // be written with a kind the ledger's own validator rejects.
+          kind: "transcript",
           origin: `text/${slug(name)}.md`,
           source: COMMAND,
           fetched_at: now,
@@ -561,7 +563,9 @@ export async function transcribe(options = {}) {
       const ledger = appendLedger(knowledgeDir, [
         {
           id: `${COMMAND}:${slug(name)}:text`,
-          kind: "text",
+          // `transcript` is in `ENTRY_KINDS`; `text` is not, so this entry used to
+          // be written with a kind the ledger's own validator rejects.
+          kind: "transcript",
           origin: `text/${slug(name)}.md`,
           source: COMMAND,
           fetched_at: now,
