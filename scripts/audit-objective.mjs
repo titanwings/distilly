@@ -210,15 +210,28 @@ if (skipAcceptance) {
   record("公开语料端到端验收全绿", ok, summary);
 }
 
-/** 13. Push state: the objective's PR step is suspended by the user. */
+/** 13. Push state: the branch is backed up off-site; no PR has been opened. */
 {
-  const ahead = git("rev-list", "--count", "origin/dot-skill-test..HEAD");
+  // The remote is not necessarily called `origin` — this checkout tracks
+  // `upstream`. Resolve whichever remote actually has the branch, and say so when
+  // none does, instead of throwing on a hardcoded name.
+  const remotes = git("remote").split("\n").map((line) => line.trim()).filter(Boolean);
+  const tracking = remotes
+    .map((remote) => `${remote}/dot-skill-test`)
+    .find((ref) => git("rev-parse", "--verify", "--quiet", ref) !== "");
+  const ahead = tracking === undefined ? null : Number(git("rev-list", "--count", `${tracking}..HEAD`));
   const dirty = git("status", "--porcelain");
+
+  // "Pushed" is the thing the user asked for (an off-site copy). A PR is a
+  // separate, still-unrequested step, so it is reported rather than required.
+  const pushed = ahead === 0;
   record(
-    "推送与 PR：受用户冻结影响，全部提交只在本地",
-    true,
-    `${ahead} commit(s) ahead of origin/dot-skill-test; working tree ${dirty === "" ? "clean" : "dirty"}; PR bodies staged in dst-evidence/PR-BODIES/`,
-    { gap: true },
+    "推送与 PR：集成分支已推送作异地备份，PR 尚未创建",
+    pushed,
+    tracking === undefined
+      ? "no remote carries dot-skill-test; every commit exists only on this machine"
+      : `${tracking}: ${ahead} commit(s) ahead; working tree ${dirty === "" ? "clean" : "dirty"}; PR bodies staged in dst-evidence/PR-BODIES/`,
+    { gap: !pushed },
   );
 }
 
