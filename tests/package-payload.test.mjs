@@ -17,7 +17,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -26,6 +26,25 @@ import { payloadEntries, validatePayload } from "../bin/distilly.mjs";
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const manifest = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8"));
+
+/**
+ * The files one `npm test` argument names, resolving a single `*` against the tree.
+ *
+ * Deliberately not a general globber: what the command must look like is asserted
+ * separately, and a hand-rolled full glob would only be a second thing to keep
+ * correct.
+ */
+function namedFiles(arg) {
+  if (!path.basename(arg).includes("*")) return existsSync(path.join(root, arg)) ? [arg] : [];
+  const pattern = new RegExp(
+    `^${path
+      .basename(arg)
+      .split("*")
+      .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+      .join(".*")}$`,
+  );
+  return readdirSync(path.join(root, path.dirname(arg))).filter((name) => pattern.test(name));
+}
 
 /**
  * A root that really has every `payloadEntries` path (symlinked, so the check
@@ -114,18 +133,36 @@ test("these fixtures never write through to the repository manifest", () => {
   assert.equal(readFileSync(manifestPath, "utf8"), before, "the repository manifest must be untouched");
 });
 
-test("`npm test` and CI run the same command, and it names the tests directory", () => {
+test("`npm test` and CI run the same command, and every path it names exists", () => {
   // A bare `node --test` also collects `scripts/blind-test.mjs` (`**/*-test.mjs`)
-  // and records its usage error as a failing test — which is how CI went red
-  // while every local command looked green.
+  // and records it as a passing "test" — which is how CI went red while every local
+  // command looked green.
+  //
+  // This used to assert the command's exact text, `node --test "tests/*.test.mjs"`.
+  // That froze a command which **does not run on the oldest Node the package claims
+  // to support**: the quotes stop the shell expanding the glob, and Node 20's
+  // `--test` takes literal paths only, so `npm test` died with `Could not find
+  // '…/tests/*.test.mjs'` on the Node 20 leg of the matrix while passing on Node 22.
+  //
+  // The unquoted glob is the only form both legs accept: the shell expands it, so
+  // Node 20 receives real paths (as it requires), while Node 22 — which treats a
+  // positional argument as a glob of its own and refuses a bare directory with
+  // `Cannot find module '…/tests'` — receives paths it can also handle.
   const ci = readFileSync(path.join(root, ".github", "workflows", "ci.yml"), "utf8");
   assert.match(ci, /^\s*run: npm test\s*$/m, "CI must invoke `npm test`");
-  assert.equal(manifest.scripts.test, 'node --test "tests/*.test.mjs"');
-  assert.equal(
-    /\bnode --test\s*$/.test(manifest.scripts.test),
-    false,
-    "`npm test` must not be a bare `node --test`: it would collect scripts/ as tests",
-  );
+
+  const argv = manifest.scripts.test.split(/\s+/);
+  assert.equal(argv[0], "node");
+  assert.equal(argv[1], "--test");
+  assert.ok(argv.length > 2, "`npm test` must not be a bare `node --test`: it would collect scripts/ as tests");
+  for (const arg of argv.slice(2)) {
+    assert.equal(
+      /["']/.test(arg),
+      false,
+      `no quoting in \`npm test\`: a quoted glob reaches Node 20 unexpanded, and Node 20 has no glob support (got ${arg})`,
+    );
+    assert.ok(namedFiles(arg).length > 0, `${arg} must name at least one file that exists`);
+  }
 });
 
 test("`engines` matches what CI actually tests", () => {
