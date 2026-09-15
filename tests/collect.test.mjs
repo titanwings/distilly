@@ -86,6 +86,26 @@ function sandbox(name = "case") {
   };
 }
 
+/**
+ * Every file written under `dir`, relative and sorted — for failure messages.
+ *
+ * A failing "the page was not written" assertion used to say only `false !== true`,
+ * which is unactionable from a CI log: it cannot distinguish "nothing was written"
+ * from "something was written somewhere else".
+ */
+function written(dir) {
+  const out = [];
+  const walk = (current, prefix) => {
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) walk(join(current, entry.name), rel);
+      else out.push(rel);
+    }
+  };
+  if (existsSync(dir)) walk(dir, "");
+  return out.length === 0 ? "(nothing)" : out.sort().join(", ");
+}
+
 function json(body, { status = 200, headers = {} } = {}) {
   return new Response(JSON.stringify(body), { status, headers });
 }
@@ -548,10 +568,16 @@ test("CLI success path: a fake key never reaches stdout, stderr or the receipt",
   assert.ok(!run.stdout.includes(SECRET.slack), "stdout leaked the credential");
   assert.ok(!run.stderr.includes(SECRET.slack), "stderr leaked the credential");
   const receipt = receiptOf(run.stdout);
-  assert.equal(receipt.ok, true);
+  // The messages name what was seen: a bare `false !== true` on either of these made
+  // a CI-only failure impossible to diagnose from the log alone.
+  assert.equal(receipt.ok, true, `receipt was not ok: ${JSON.stringify(receipt)}`);
   assert.equal(receipt.credential_file, "slack_config.json");
   assert.ok(!JSON.stringify(receipt).includes(SECRET.slack));
-  assert.equal(box.exists("knowledge/raw/slack/C0123-p001.json"), true);
+  assert.equal(
+    box.exists("knowledge/raw/slack/C0123-p001.json"),
+    true,
+    `the page was not written; receipt=${JSON.stringify(receipt)} stderr=${run.stderr} tree=${written(box.work)}`,
+  );
 });
 
 test("CLI failure path: a rejected key leaks nothing and names where to reconfigure", () => {

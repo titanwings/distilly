@@ -88,9 +88,15 @@ export function distillyHome(env = process.env) {
 }
 
 export function credentialPaths(env = process.env) {
+  // `env.HOME ?? homedir()`, matching `kit.mjs`: the pre-rename
+  // `~/.colleague-skill/<file>` fallback has to move when a caller points `HOME`
+  // somewhere else. Reading the real home here ignored `env.HOME` — so an isolated
+  // run (a test, a sandboxed collect) could still pick up the credential sitting in
+  // the developer's own home, and the two channels disagreed about which file they
+  // had just read.
   return {
     primary: join(distillyHome(env), CONFIG_FILE),
-    legacy: join(homedir(), LEGACY_CONFIG_FILE),
+    legacy: join(env?.HOME ?? homedir(), LEGACY_CONFIG_FILE),
   };
 }
 
