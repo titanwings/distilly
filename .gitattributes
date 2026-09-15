@@ -1,0 +1,6 @@
+# Fixtures are byte-exact inputs: line endings, BOMs and legacy encodings are
+# exactly what the parsers are being tested on, so git must not normalise them on
+# checkout. Without this a CRLF fixture arrives as LF and its byte ranges drift.
+tests/fixtures/** -text -diff
+# The bundled derivation fixtures resolve anchors to raw byte ranges as well.
+src/derive/fixtures/** -text -diff
