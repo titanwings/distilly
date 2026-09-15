@@ -2,53 +2,83 @@ name: CI
 
 on:
   push:
-    branches: [dot-skill, main]
+    branches: [dot-skill-test, dot-skill, main]
   pull_request:
-    branches: [dot-skill, main]
+    branches: [dot-skill-test, dot-skill, main]
 
 jobs:
   test:
-    name: Python ${{ matrix.python-version }}
+    name: Node ${{ matrix.node-version }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.9", "3.11"]
+        node-version: ["20", "22"]
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      - uses: actions/setup-node@v4
         with:
-          python-version: ${{ matrix.python-version }}
-          cache: pip
+          node-version: ${{ matrix.node-version }}
 
-      - name: Install dependencies
+      - name: Syntax-check every module
         run: |
-          python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          find bin src scripts tests -name '*.mjs' -print0 | xargs -0 -n1 node --check
 
-      - name: Compile all Python sources
-        run: python -m compileall -q tools
+      - name: Unit tests
+        run: node --test
 
-      - name: Run unit tests
-        run: |
-          if [ -d tests ]; then
-            python -m unittest discover -s tests -p 'test_*.py' -v
-          else
-            echo "No tests/ directory yet — skipping unittest discover."
-          fi
+      - name: Prompt contract lint
+        run: node scripts/prompt-lint.mjs
 
-  lint:
-    name: Ruff
+      - name: Skill template freshness
+        run: node scripts/generate-template.mjs --check
+
+      # Every demand of the v2 objective, mapped to the artefact that proves it.
+      # Acceptance itself runs in the next job, so this is scope-only.
+      - name: Objective audit
+        run: node scripts/audit-objective.mjs --skip-acceptance
+
+      # Release hygiene: versions, schema marker, carried directories, gates.
+      - name: Release check
+        run: node scripts/check_release.mjs
+
+  acceptance:
+    name: Acceptance (public corpus)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+
+      - uses: actions/setup-node@v4
         with:
-          python-version: "3.11"
-      - name: Install ruff
-        run: pip install ruff
-      - name: Run ruff (non-blocking for now)
-        run: ruff check tools/ || true
+          node-version: "22"
+
+      # The visual-check phase drives a real browser; playwright is a dev
+      # dependency and never ships with the package.
+      - name: Install Playwright
+        run: |
+          npm install --no-save playwright@1.62.1
+          npx playwright install --with-deps chromium
+
+      - name: End-to-end acceptance on the bundled corpus
+        run: node scripts/acceptance.mjs --evidence "$RUNNER_TEMP/evidence"
+
+      # The second public corpus is multi-source (two chat exports + a document)
+      # and dated, so the same phases run on a corpus the derivation was designed for.
+      - name: End-to-end acceptance on the multi-source corpus
+        run: node scripts/acceptance.mjs --corpus tests/fixtures/public-corpus/synthetic-multisource --evidence "$RUNNER_TEMP/evidence-multisource"
+
+      # Scope audit *with* the acceptance run it normally performs.
+      - name: Objective audit (includes acceptance)
+        run: DISTILLY_PLAYWRIGHT_ROOT="$PWD" node scripts/audit-objective.mjs
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: acceptance-evidence
+          path: |
+            ${{ runner.temp }}/evidence
+            ${{ runner.temp }}/evidence-multisource
+          if-no-files-found: ignore
+
