@@ -12,7 +12,6 @@
 
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -32,7 +31,6 @@ import {
 } from '../src/hosts/agents.mjs';
 
 const repoRoot = fileURLToPath(new URL('..', import.meta.url));
-const binSource = readFileSync(join(repoRoot, 'bin', 'distilly.mjs'), 'utf8');
 
 /** Hosts that intentionally have no documented project-local directory. */
 const GLOBAL_ONLY = ['openclaw'];
@@ -52,45 +50,6 @@ const CLI_SUPPORTED = [
   'pi',
 ];
 const CLONE_ONLY = ['deepseek-harness'];
-
-/**
- * Slice `const hosts = { ... };` out of bin/distilly.mjs and return a Map of
- * host id → the unevaluated arrow-function body (one `join(...)` expression).
- *
- * This is deliberately structural rather than a regex over JavaScript: it only
- * needs the key of each entry and the text between it and the next entry.
- */
-function parseBinHosts(source) {
-  const block = source.match(/const hosts = \{([\s\S]*?)\n\};/);
-  assert.ok(block, 'bin/distilly.mjs must declare a `const hosts = { ... };` table');
-
-  const body = block[1];
-  const keyPattern = /(?:^|\n)[ \t]*"?([a-z][a-z0-9-]*)"?[ \t]*:[ \t]*\(\)[ \t]*=>/g;
-  const keys = [...body.matchAll(keyPattern)];
-  assert.ok(keys.length > 0, 'bin/distilly.mjs hosts table must not be empty');
-
-  const entries = new Map();
-  keys.forEach((match, index) => {
-    const start = match.index + match[0].length;
-    const end = index + 1 < keys.length ? keys[index + 1].index : body.length;
-    entries.set(match[1], body.slice(start, end).replace(/,\s*$/, '').trim());
-  });
-  return entries;
-}
-
-/**
- * Evaluate one host expression with only `join`, `homedir` and `process.env`
- * defined. `$DSH_HOME` stands for "whatever the user set"; `undefined` means
- * the variable is unset, which must fall back to `~/.dsh`.
- */
-function evaluateHostTarget(expression, dshHome) {
-  const env = dshHome === undefined ? {} : { DSH_HOME: dshHome };
-  const stubJoin = (...parts) => parts.join('/');
-  const stubHomedir = () => '~';
-  // eslint-disable-next-line no-new-func -- the input is our own repository file
-  const evaluate = new Function('join', 'homedir', 'process', `return (${expression});`);
-  return evaluate(stubJoin, stubHomedir, { env });
-}
 
 /**
  * `$DSH_HOME/skills/distilly` and `~/.dsh/skills/distilly` are the same target
