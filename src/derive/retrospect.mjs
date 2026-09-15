@@ -486,7 +486,14 @@ function readCorpus(personRoot) {
   const blocks = [];
   for (const file of files) {
     for (const block of readBlocks(file.text)) blocks.push({ ...block, file: file.relativePath });
-    const digestKnown = ledger.entries.some((entry) => entry?.sha256 === file.sha256);
+    // Provenance is established by the ledger's own record of where the text went,
+    // not by comparing a raw-file digest with a normalised-text digest: those are
+    // two different files and the comparison can never hold. The raw digest is
+    // kept as a fallback for entries written by other producers.
+    const recordedAs = file.relativePath.replace(/^knowledge\//, "");
+    const digestKnown = ledger.entries.some(
+      (entry) => entry?.locations?.text === recordedAs || entry?.sha256 === file.sha256,
+    );
     if (!digestKnown) {
       warnings.push(
         `knowledge/${file.relativePath.replace(/^knowledge\//, "")} has no ledger entry with a matching sha256; it was read but not trusted for provenance.`,

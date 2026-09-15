@@ -31,6 +31,7 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { KnowledgeStore, atomicWriteText, sha256Hex, stableStringify } from "./store.mjs";
 import { assignAnchorsToText, conservationReport, formatAnchor, formatSubAnchor, parseAnchor } from "./anchors.mjs";
 
@@ -102,7 +103,9 @@ function withMeta(entries, meta = {}) {
  * provenance.
  */
 export function loadLedger(store) {
-  const path = store.ledgerPath;
+  // A full KnowledgeStore exposes `ledgerPath`; callers that only have the directory
+  // pass `{ root }`. Both spellings mean the same file: <knowledge>/index.json.
+  const path = store.ledgerPath ?? join(store.root ?? String(store), "index.json");
   if (!existsSync(path)) return emptyLedger();
   let raw;
   try {

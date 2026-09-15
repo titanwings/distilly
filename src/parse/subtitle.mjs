@@ -211,12 +211,12 @@ export function splitCues(file, format) {
     }
 
     const lastBody = bodyLines.length > 0 ? bodyLines[bodyLines.length - 1] : lines[lineIndex];
-    // The byte range covers the timecode line through the terminator of the last
-    // line of cue text: enough to show where the cue came from, and nothing that
-    // belongs to the next cue.
-    // A cue owns its identifier line too: the SubRip index or the WebVTT cue
-    // name is part of what identifies the cue in the file.
-    const firstLine = indexLineText && indexLineText.start < lines[lineIndex].start ? indexLineText : lines[lineIndex];
+    // The byte range covers exactly the cue **text**: from the first line of body
+    // through the terminator of the last. The SubRip index and the timecode line
+    // identify the cue but are not its text, and including them would break the
+    // spine's invariant that an anchor's text is the verbatim raw-byte slice.
+    // They still reach the reader through `label`.
+    const firstLine = bodyLines.length > 0 ? bodyLines[0] : lines[lineIndex];
     const byteStart = file.charToByte(firstLine.start);
     const byteEnd = file.charToByte(lastBody.terminatorEnd);
 
@@ -250,7 +250,7 @@ export function splitCues(file, format) {
       text: body,
       line: lineIndex + 1,
       charStart: firstLine.start,
-      charEnd: lastBody.terminatorEnd,
+      charEnd: lastBody.end,
       byteStart,
       byteEnd,
     });
@@ -304,6 +304,10 @@ export function parseSubtitle(file, options = {}) {
       label: cue.speaker
         ? `cue ${cue.index} · ${cue.speaker} @ ${formatTimecode(cue.start)}`
         : `cue ${cue.index} @ ${formatTimecode(cue.start)}`,
+      speaker: cue.speaker ?? null,
+      at: formatTimecode(cue.start),
+      speaker: cue.speaker ?? null,
+      at: formatTimecode(cue.start),
       speaker: cue.speaker ?? null,
       at: formatTimecode(cue.start),
       speaker: cue.speaker ?? null,

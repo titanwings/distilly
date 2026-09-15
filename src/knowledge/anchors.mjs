@@ -719,7 +719,13 @@ function attributionFor(unit, lookup) {
   if (!span) return "";
   const parts = [];
   if (typeof span.at === "string" && span.at !== "") parts.push(span.at);
-  if (typeof span.speaker === "string" && span.speaker.trim() !== "") parts.push(`${span.speaker.trim()}：`);
+  // A subtitle cue often already reads `Lin: …`. Prefixing the speaker again would
+  // render `Lin：Lin: …` — the speaker is in the text, so only the timestamp is
+  // markup. Compared without the colon so both `Lin:` and `Lin：` are recognised.
+  const speaker = typeof span.speaker === "string" ? span.speaker.trim() : "";
+  const text = typeof unit.text === "string" ? unit.text.trimStart() : "";
+  const alreadyNamed = speaker !== "" && (text.startsWith(`${speaker}:`) || text.startsWith(`${speaker}：`));
+  if (speaker !== "" && !alreadyNamed) parts.push(`${speaker}：`);
   if (parts.length === 0) return "";
   return parts.length === 2 ? `${parts[0]} ${parts[1]}` : `${parts[0]} `;
 }
