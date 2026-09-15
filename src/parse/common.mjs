@@ -979,6 +979,26 @@ export function assembleContent({ file, records, separator = "\n" }) {
     cursor += record.text.length;
     const charEnd = cursor;
 
+    // A record that arrived without offsets still gets them when its text can be
+    // located in the payload *unambiguously*. Without this, a record built by a
+    // caller (rather than by one of the parsers, which locate their own turns)
+    // reached the ledger with `byteStart: null`, and every anchor over it
+    // resolved to nothing — the one property the evidence spine exists to keep.
+    // An ambiguous needle stays null: guessing between two occurrences would put
+    // a wrong byte range behind a right anchor.
+    let byteStart = record.byteStart ?? null;
+    let byteEnd = record.byteEnd ?? null;
+    if (byteStart === null && !record.synthetic && file && typeof file.text === "string") {
+      const needle = record.locateBy ?? record.text.trim();
+      if (needle !== "") {
+        const first = file.text.indexOf(needle);
+        if (first !== -1 && file.text.indexOf(needle, first + 1) === -1) {
+          byteStart = file.charToByte(first);
+          byteEnd = file.charToByte(first + needle.length);
+        }
+      }
+    }
+
     segments.push({
       charStart,
       charEnd,
@@ -986,8 +1006,8 @@ export function assembleContent({ file, records, separator = "\n" }) {
       // The record's span in the raw payload travels with the segment, so the
       // ledger can report the exact bytes of a turn instead of guessing from the
       // paragraph that happens to contain it.
-      byteStart: record.byteStart ?? null,
-      byteEnd: record.byteEnd ?? null,
+      byteStart,
+      byteEnd,
       file: record.file ?? file.name,
       speaker: record.speaker ?? null,
       at: record.at ?? null,
@@ -996,8 +1016,8 @@ export function assembleContent({ file, records, separator = "\n" }) {
       kind: record.kind ?? "item",
       text: record.text,
       label: record.label ?? null,
-      byteStart: record.byteStart ?? null,
-      byteEnd: record.byteEnd ?? null,
+      byteStart,
+      byteEnd,
       file: record.file ?? file.name,
       speaker: record.speaker ?? null,
       at: record.at ?? null,

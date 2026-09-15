@@ -150,6 +150,11 @@ export function isValidUtf8(bytes) {
  *     one of them decodes the payload;
  *  6. UTF-8 with U+FFFD replacement, reporting how many sequences were replaced.
  *
+ * Ambiguity is a first-class outcome: GBK and Big5 both decode the same CJK byte
+ * pairs, so when more than one legacy codec decodes the payload cleanly we set
+ * `ok: false` and name the candidates instead of picking one at random. The
+ * caller reports "declare the charset" rather than inventing characters.
+ *
  * Step 5 is opt-in because GBK, Big5 and Shift_JIS map almost any byte pair to
  * *some* character. A silent fallback would turn a truncated JPEG into confident
  * nonsense; a loudly-reported U+FFFD is the honest answer.
@@ -302,6 +307,10 @@ export function decodeBuffer(bytes, options = {}) {
 
   return {
     text,
+    // `ok` is the detector's verdict and callers assert on it ("ambiguous, so we
+    // refused"). Dropping it here made every refusal look like a success with an
+    // undefined flag.
+    ok: Boolean(detection.ok),
     label: detection.label,
     bom: detection.bom,
     bomBytes: detection.bomBytes,
@@ -309,6 +318,9 @@ export function decodeBuffer(bytes, options = {}) {
     replaced,
     attempted: detection.attempted ?? [],
     ambiguous: detection.ambiguous ?? null,
+    // The refusal reason travels with the result: "gbk/big5/shift_jis all decode
+    // it; declare the charset" is the actionable half of an ambiguous verdict.
+    error: detection.error ?? null,
     warnings,
   };
 }
