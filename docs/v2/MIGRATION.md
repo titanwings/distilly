@@ -47,3 +47,4 @@
 1. **删一个 py 文件的前提**：对应 mjs 有测试，且 parity 证据（同一输入，两边输出逐字节相同）写进 `docs/evidence/pr-NN-*.md`。
 2. 纯网络/需要凭据的部分（飞书浏览器自动化、Slack/钉钉拉取）不靠"无凭据环境下的 parity"证明——用注入 mock fetch 的失败路径 + 密钥不泄露断言来证明，真实账号验证在用户授权后单独做。
 3. 迁移完成判据：`find tools tests -name "*.py" | wc -l` 为 0，且 `requirements.txt` 删除，CI 只跑 Node。
+
