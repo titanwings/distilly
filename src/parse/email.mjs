@@ -260,8 +260,15 @@ export function parseEmail(file, options = {}) {
     parser: "email",
     format: name.endsWith(".mbox") ? "mbox" : "eml",
     kind: "email",
-    method: "local-file",
+    // As in `parseChat`: the caller knows how the bytes were obtained. The Gmail
+    // collector asks for `api-oauth-refresh` plus the credential file, and
+    // hardcoding `local-file` here made a credentialed fetch indistinguishable
+    // from a local import in the ledger.
+    method: options.method ?? "local-file",
     source: options.source ?? "email",
+    ...(options.credentialed === undefined ? {} : { credentialed: options.credentialed }),
+    ...(options.credential_file ? { credential_file: options.credential_file } : {}),
+    ...(options.credential_source ? { credential_source: options.credential_source } : {}),
     files: [file],
     records: spanRecords,
     warnings,

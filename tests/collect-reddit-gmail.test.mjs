@@ -142,7 +142,11 @@ test("reddit: a bad credential and a refused verb both fail loudly", async () =>
   const box = sandbox("reddit", SECRETS.reddit);
   const rejected = await reddit.collect({ fetch: async () => jsonResponse({ error: "invalid_client" }, { status: 401 }), env: box.env, root: box.work, person: "demo", target: "demo" });
   assert.equal(rejected.ok, false);
-  assert.match(rejected.receipt.unavailable[0].reason, /check the credential and its scopes|auth-failed/);
+  // A 401 from the token endpoint is reported as an HTTP failure with the scope hint,
+  // not as an invented "auth-failed" (the credential was rejected, and that is what it says).
+  assert.match(rejected.receipt.unavailable[0].reason, /unauthorized: reddit HTTP 401/);
+  assert.match(rejected.receipt.unavailable[0].remediation.join("\n"), /check the credential and its scopes/);
+  assert.equal(rejected.receipt.credential_file, "reddit_config.json");
   assert.equal(box.exists("skills/colleague/demo/knowledge/text"), false);
 
   assert.throws(() => assertReadOnly("https://oauth.reddit.com/api/submit", "POST", reddit.ALLOWED_CALLS, "reddit"), /read-only: POST \/api\/submit/);
