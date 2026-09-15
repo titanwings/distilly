@@ -1,188 +1,124 @@
-// Release consistency check: one release tuple, verified against every artifact that names it.
-//
-// A release can go out with a capacity fixture that still names the previous version, a plugin
-// tree whose digest no longer matches the manifest, or no changelog entry at all. Each of those
-// breaks host setup for real users, so they are checked here instead of at first use.
-import { createHash } from "node:crypto";
-import { readFile, readdir, stat } from "node:fs/promises";
-import { dirname, join, relative, sep } from "node:path";
-import { fileURLToPath } from "node:url";
+#!/usr/bin/env node
+/**
+ * Release readiness for this package: the things a version bump must not forget.
+ *
+ * `acceptance.mjs` proves the pipeline works and `audit-objective.mjs` proves the
+ * scope is closed; neither notices that the version printed by `--version` drifted
+ * from `package.json`, that a migrated ledger lost its schema marker, or that a
+ * `.py` file came back. Those are release-time questions, so they live here.
+ *
+ *   node scripts/check_release.mjs [--json] [--tag vX.Y.Z]
+ *
+ * Exit code 1 when any check fails. `--tag` additionally asserts that the release
+ * tag names the same version the package declares.
+ */
 
-const REPOSITORY_ROOT = fileURLToPath(new URL("../", import.meta.url));
-const problems = [];
-const notes = [];
+import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 
-const fail = (message) => problems.push(message);
-const note = (message) => notes.push(message);
+import { SCHEMA_VERSION } from "../src/skill/schema.mjs";
+import { LEDGER_SCHEMA_VERSION } from "../src/knowledge/ledger.mjs";
 
-const canonicalize = (value) => {
-  if (Array.isArray(value)) return value.map(canonicalize);
-  if (value !== null && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value)
-        .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
-        .map(([key, child]) => [key, canonicalize(child)]),
-    );
+const root = resolve(import.meta.dirname, "..");
+const json = process.argv.includes("--json");
+const tagIndex = process.argv.indexOf("--tag");
+const tag = tagIndex === -1 ? null : process.argv[tagIndex + 1];
+
+const rows = [];
+const record = (name, ok, evidence) => rows.push({ name, ok: Boolean(ok), evidence });
+
+const read = (relative) => readFileSync(join(root, relative), "utf8");
+const pkg = JSON.parse(read("package.json"));
+
+/* 1 — one version, everywhere it is printed ---------------------------------- */
+{
+  const binVersion = execFileSync(process.execPath, [join(root, "bin", "distilly.mjs"), "--version"], { encoding: "utf8" }).trim();
+  const skill = existsSync(join(root, "SKILL.md")) ? read("SKILL.md") : "";
+  const skillVersion = /^version:\s*"?([^"\n]+)"?/m.exec(skill)?.[1]?.trim() ?? null;
+  const consistent = binVersion === pkg.version && (skillVersion === null || skillVersion === pkg.version);
+  record(
+    "版本一致（package.json / --version / SKILL.md）",
+    consistent,
+    `package.json ${pkg.version}, --version ${binVersion}, SKILL.md ${skillVersion ?? "(未声明)"}`,
+  );
+  if (tag !== null) {
+    record("发布 tag 指向同一版本", tag === `v${pkg.version}` || tag === pkg.version, `--tag ${tag} vs ${pkg.version}`);
   }
-  return value;
-};
-
-const canonicalJson = (value) => JSON.stringify(canonicalize(value));
-const sha256 = (bytes) => `sha256_${createHash("sha256").update(bytes).digest("hex")}`;
-
-const readJson = async (path) => JSON.parse(await readFile(path, "utf8"));
-
-/** Collects every regular file under one root, keyed by POSIX relative path. */
-const walkRegularFiles = async (root) => {
-  const files = new Map();
-  const walk = async (directory) => {
-    const entries = await readdir(directory, { withFileTypes: true });
-    for (const entry of entries) {
-      const path = join(directory, entry.name);
-      if (entry.isSymbolicLink()) {
-        fail(`plugin source contains a symbolic link: ${relative(REPOSITORY_ROOT, path)}`);
-        continue;
-      }
-      if (entry.isDirectory()) {
-        await walk(path);
-        continue;
-      }
-      if (!entry.isFile()) {
-        fail(`plugin source contains a non-regular entry: ${relative(REPOSITORY_ROOT, path)}`);
-        continue;
-      }
-      files.set(relative(root, path).split(sep).join("/"), await readFile(path));
-    }
-  };
-  await walk(root);
-  return files;
-};
-
-const skillTreeDigest = (files) => {
-  const skillPrefix = "skills/distilly/";
-  const records = [...files.entries()]
-    .filter(([path]) => path.startsWith(skillPrefix))
-    .map(([path, bytes]) => ({
-      path: path.slice(skillPrefix.length),
-      contentDigest: sha256(bytes),
-    }))
-    .sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0));
-  return sha256(Buffer.from(`canonical-skill-tree-v1\0${canonicalJson(records)}`, "utf8"));
-};
-
-const manifestPath = join(REPOSITORY_ROOT, "plugins", "release-manifest.json");
-const manifest = await readJson(manifestPath);
-const releaseVersion = manifest.releaseVersion;
-if (typeof releaseVersion !== "string" || releaseVersion.length === 0) {
-  fail("the release manifest has no releaseVersion");
 }
 
-// 1. The canonical Skill digest recorded in the manifest must match the shared Skill tree.
-const canonicalRoot = join(REPOSITORY_ROOT, manifest.canonicalSkill.root);
-const canonicalFiles = await walkRegularFiles(canonicalRoot);
-const computedCanonical = skillTreeDigest(
-  new Map([...canonicalFiles].map(([path, bytes]) => [`skills/distilly/${path}`, bytes])),
-);
-if (computedCanonical !== manifest.canonicalSkill.digest) {
-  fail(
-    `plugins/release-manifest.json canonicalSkill.digest is ${manifest.canonicalSkill.digest} but the tree hashes to ${computedCanonical}`,
+/* 2 — schemas are the frozen ones, and a migration exists -------------------- */
+{
+  const migrate = existsSync(join(root, "src", "skill", "migrate.mjs"));
+  const migrationTest = read(join("tests", "schema-migration.test.mjs"));
+  record(
+    `schema v${SCHEMA_VERSION} 与账本 v${LEDGER_SCHEMA_VERSION}，迁移脚本在`,
+    SCHEMA_VERSION === "4" && migrate && /idempot/i.test(migrationTest),
+    `SCHEMA_VERSION=${SCHEMA_VERSION}, LEDGER_SCHEMA_VERSION=${LEDGER_SCHEMA_VERSION}, src/skill/migrate.mjs=${migrate}, 幂等断言=${/idempot/i.test(migrationTest)}`,
   );
 }
-for (const file of manifest.canonicalSkill.files ?? []) {
-  const bytes = canonicalFiles.get(file.path);
-  if (bytes === undefined) {
-    fail(`the canonical Skill tree is missing ${file.path}`);
-    continue;
-  }
-  if (sha256(bytes) !== file.contentDigest) {
-    fail(`the canonical Skill file ${file.path} no longer matches its recorded digest`);
-  }
-}
 
-// 2. Every recorded host target must still produce the recorded digests from its own tree.
-for (const target of manifest.targets ?? []) {
-  const root = join(REPOSITORY_ROOT, target.pluginRoot);
-  const files = await walkRegularFiles(root);
-  const digest = skillTreeDigest(files);
-  if (digest !== target.skillDigest) {
-    fail(
-      `${target.host}: plugins/release-manifest.json skillDigest is ${target.skillDigest} but ${target.pluginRoot} hashes to ${digest}`,
-    );
-  }
-  if (digest !== manifest.canonicalSkill.digest) {
-    fail(`${target.host}: the plugin Skill tree differs from the canonical Skill tree`);
-  }
-  const manifestBytes = files.get(
-    relative(root, join(REPOSITORY_ROOT, target.pluginManifestPath)).split(sep).join("/"),
+/* 3 — the installers still carry the evidence spine -------------------------- */
+{
+  const hosts = read(join("src", "install", "hosts.mjs"));
+  const carried = ["knowledge/raw", "knowledge/text", "evidence", "views"].every((name) => hosts.includes(name));
+  record(
+    "安装器携带 evidence spine（knowledge/raw、knowledge/text、evidence、views）",
+    carried,
+    carried ? "CARRIED_DIRECTORIES 覆盖四项" : "CARRIED_DIRECTORIES 缺项",
   );
-  if (manifestBytes === undefined) {
-    fail(`${target.host}: ${target.pluginManifestPath} is missing`);
-    continue;
-  }
-  const parsed = JSON.parse(Buffer.from(manifestBytes).toString("utf8"));
-  if (parsed.version !== releaseVersion) {
-    fail(
-      `${target.host}: ${target.pluginManifestPath} declares version ${parsed.version}, not ${releaseVersion}`,
-    );
-  }
-  if (sha256(manifestBytes) !== target.pluginManifestDigest) {
-    fail(`${target.host}: ${target.pluginManifestPath} no longer matches its recorded digest`);
-  }
 }
 
-// 3. Every capacity fixture must name this release and this Skill digest.
-const evidenceRoot = join(REPOSITORY_ROOT, "packages", "cli", "src", "evidence", "host-capacity");
-const fixtureNames = (await readdir(evidenceRoot).catch(() => [])).filter((name) =>
-  name.endsWith(".json"),
-);
-if (fixtureNames.length === 0) fail("no host capacity fixture is recorded");
-for (const name of fixtureNames.sort()) {
-  const fixture = await readJson(join(evidenceRoot, name));
-  if (fixture.releaseVersion !== releaseVersion) {
-    fail(
-      `${name} was measured for release ${fixture.releaseVersion}, not ${releaseVersion}; re-measure it or remove it`,
-    );
-  }
-  if (fixture.canonicalSkillDigest !== manifest.canonicalSkill.digest) {
-    fail(`${name} records a different canonical Skill digest than this release`);
-  }
-  if (fixture.boundKind !== undefined && fixture.capacity?.boundKind !== "verified_lower_bound") {
-    fail(`${name} must declare boundKind "verified_lower_bound"`);
-  }
-  if ((fixture.capacity?.estimatedInputTokens ?? 0) >= (fixture.capacity?.verifiedBriefingBytes ?? 0)) {
-    fail(`${name} claims a token budget that is not derived from its measured bytes`);
-  }
-}
-note(`${fixtureNames.length} capacity fixture(s) verified against ${releaseVersion}`);
-
-// 4. Package manifests that carry the release version must agree with it.
-const packageRoots = (await readdir(join(REPOSITORY_ROOT, "packages"), { withFileTypes: true }))
-  .filter((entry) => entry.isDirectory())
-  .map((entry) => entry.name)
-  .sort();
-for (const name of packageRoots) {
-  const path = join(REPOSITORY_ROOT, "packages", name, "package.json");
-  const descriptor = await readJson(path);
-  if (descriptor.version !== undefined && descriptor.version !== releaseVersion) {
-    fail(`packages/${name}/package.json declares version ${descriptor.version}, not ${releaseVersion}`);
-  }
+/* 4 — the package is zero-dependency and Python-free ------------------------- */
+{
+  const dependencies = Object.keys(pkg.dependencies ?? {});
+  const tracked = execFileSync("git", ["ls-files"], { cwd: root, encoding: "utf8" }).split("\n");
+  const python = tracked.filter((path) => /\.py$/.test(path) || /(^|\/)requirements\.txt$/.test(path));
+  record(
+    "零运行时依赖且没有 Python 残留",
+    dependencies.length === 0 && python.length === 0,
+    `dependencies: ${dependencies.length === 0 ? "none" : dependencies.join(", ")}; tracked .py / requirements.txt: ${python.length}`,
+  );
 }
 
-// 5. The changelog must describe this release.
-const changelog = await readFile(join(REPOSITORY_ROOT, "CHANGELOG.md"), "utf8").catch(() => "");
-if (!changelog.includes(releaseVersion)) {
-  fail(`CHANGELOG.md has no section for ${releaseVersion}`);
+/* 5 — generated artefacts are in sync with their sources -------------------- */
+{
+  const template = execFileSync(process.execPath, [join(root, "scripts", "generate-template.mjs"), "--check"], { encoding: "utf8" }).trim();
+  const pinyin = existsSync(join(root, "assets", "pinyin.json"));
+  record(
+    "生成物与源同步（模板 / 拼音表）",
+    /up to date/.test(template) && pinyin,
+    `${template.split("\n").pop()}; assets/pinyin.json: ${pinyin}`,
+  );
 }
 
-// 6. The plugin manifest the DSH profile layer publishes must exist.
-if (!(await stat(join(REPOSITORY_ROOT, "plugins", "dsh", "package.json")).catch(() => undefined))) {
-  fail("plugins/dsh/package.json is missing, so DSH has no platform manifest");
+/* 6 — the gates a release claims are runnable -------------------------------- */
+{
+  const gates = ["scripts/acceptance.mjs", "scripts/audit-objective.mjs", "scripts/prompt-lint.mjs", "scripts/visual-check.mjs", "scripts/split-corpus.mjs", "scripts/blind-test.mjs"];
+  const missing = gates.filter((path) => !existsSync(join(root, path)));
+  const ci = read(join(".github", "workflows", "ci.yml"));
+  const wired = ["node --test", "acceptance.mjs", "prompt-lint.mjs", "audit-objective.mjs"].every((needle) => ci.includes(needle));
+  record(
+    "发布所依赖的门禁都在，且 CI 会跑",
+    missing.length === 0 && wired,
+    `missing: ${missing.length === 0 ? "none" : missing.join(", ")}; CI 覆盖 node --test / acceptance / prompt-lint / audit: ${wired}`,
+  );
 }
 
-for (const summary of notes) console.log(`ok: ${summary}`);
-if (problems.length > 0) {
-  console.error(`release check failed for ${releaseVersion}:`);
-  for (const problem of problems) console.error(`- ${problem}`);
-  process.exit(1);
+/* 7 — documentation a release points at ------------------------------------- */
+{
+  const docs = ["docs/v2/CONTRACT.md", "docs/v2/ACCEPTANCE.md", "docs/v2/STATUS.md", "docs/v2/MIGRATION.md", "docs/v2/IDENTITY.md", "README.md"];
+  const missing = docs.filter((path) => !existsSync(join(root, path)));
+  record("发布指向的文档都在", missing.length === 0, missing.length === 0 ? `${docs.length} 份文档就位` : `缺: ${missing.join(", ")}`);
 }
-console.log(`release check passed for ${releaseVersion} (${manifest.targets?.length ?? 0} host target(s))`);
+
+const failed = rows.filter((row) => !row.ok);
+if (json) {
+  console.log(JSON.stringify({ ok: failed.length === 0, version: pkg.version, schema: SCHEMA_VERSION, rows }, null, 2));
+} else {
+  console.log("发布检查 / release check\n");
+  for (const row of rows) console.log(`${row.ok ? "✅" : "❌"} ${row.name}\n     ${row.evidence}`);
+  console.log(`\n${rows.length - failed.length}/${rows.length} 项通过${failed.length === 0 ? "" : `；未通过：${failed.map((row) => row.name).join("；")}`}`);
+}
+process.exit(failed.length === 0 ? 0 : 1);
+
