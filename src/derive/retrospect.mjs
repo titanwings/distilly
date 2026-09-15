@@ -412,15 +412,31 @@ function splitBlock(line) {
   let rest = line.replace(ANCHOR_BRACKETS, " ");
   rest = rest.replace(ANCHOR_LEADING, " ");
   let at = null;
+  let atLabel = null;
   const stamp = LEADING_TIMESTAMP.exec(rest);
   if (stamp) {
     at = parseTimestamp(stamp[1]);
+    atLabel = stamp[1];
     rest = rest.slice(stamp[0].length);
   }
   // A subtitle timecode sits where a chat timestamp would; consume it before the
   // speaker, or the speaker regex eats "00" out of "00:00:01.000 面试官：".
+  // It is also *the* time of that unit — consuming it without keeping it left
+  // `at` null for every subtitle corpus, which is why the timeline was skipped and
+  // every shift reported `at_time: null`.
   const timecode = LEADING_TIMECODE.exec(rest);
-  if (timecode) rest = rest.slice(timecode[0].length);
+  if (timecode) {
+    if (at === null) {
+      const millis = toEpochMillis(timecode[1]);
+      if (millis !== null) at = millis;
+    }
+    // A bare `HH:MM:SS,mmm` has no date. The milliseconds are what the derivation
+    // buckets by, but rendering them back as an instant produced
+    // `1970-01-01T00:03:51.001Z` — a date the corpus never carried. The raw
+    // timecode travels along so the page can show the time it actually has.
+    if (atLabel === null) atLabel = timecode[1].replace(",", ".");
+    rest = rest.slice(timecode[0].length);
+  }
 
   let speaker = null;
   const prefix = LEADING_SPEAKER.exec(rest);
@@ -428,7 +444,7 @@ function splitBlock(line) {
     speaker = prefix[1].trim();
     rest = rest.slice(prefix[0].length);
   }
-  return { at, speaker, text: rest.replace(/\s+/g, " ").trim() };
+  return { at, atLabel, speaker, text: rest.replace(/\s+/g, " ").trim() };
 }
 
 /**
@@ -475,6 +491,7 @@ function buildUnits(blocks, ledger) {
           speakers: [],
           texts: [],
           ats: [],
+          atLabels: [],
         };
         byAnchor.set(anchor, unit);
         order.push(unit);
@@ -485,6 +502,7 @@ function buildUnits(blocks, ledger) {
         const millis = toEpochMillis(parts.at);
         unit.ats.push(millis === null ? parts.at : millis);
       }
+      if (parts.atLabel) unit.atLabels.push(parts.atLabel);
       unit.texts.push(parts.text);
     }
   }
@@ -502,6 +520,7 @@ function buildUnits(blocks, ledger) {
       speaker: speakers.length === 1 ? speakers[0] : null,
       speakers,
       at: ats.length > 0 ? ats[0] : null,
+      atLabel: unit.atLabels.length > 0 ? unit.atLabels[0] : null,
       atLast: ats.length > 0 ? ats[ats.length - 1] : null,
       mergedTurns: unit.texts.length,
     };

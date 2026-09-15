@@ -357,8 +357,10 @@ export function deriveTimeline(corpus, helpers) {
         // `time`, not `order`: the buckets come from timestamps, so an export
         // that is missing dates cannot silently produce order-based phases.
         basis: "time",
-        from: new Date(bucket[0].at).toISOString(),
-        to: new Date(bucket[bucket.length - 1].at).toISOString(),
+        // A time-of-day corpus shows the times it has; only a corpus that really
+        // carried dates gets instants.
+        from: bucket[0].atLabel ?? new Date(bucket[0].at).toISOString(),
+        to: bucket[bucket.length - 1].atLabel ?? new Date(bucket[bucket.length - 1].at).toISOString(),
         messages: bucket.length,
         speakers,
         mean_chars: mean(lengths),
@@ -381,8 +383,8 @@ export function deriveTimeline(corpus, helpers) {
       "Time span",
       {
         basis: "time",
-        from: new Date(first).toISOString(),
-        to: new Date(last).toISOString(),
+        from: timed[0].atLabel ?? new Date(first).toISOString(),
+        to: timed[timed.length - 1].atLabel ?? new Date(last).toISOString(),
         days: round(span / 86_400_000),
         messages: timed.length,
         range_anchors: { from: timed[0].anchor, to: timed[timed.length - 1].anchor },
