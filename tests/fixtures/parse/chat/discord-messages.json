@@ -1,0 +1,6 @@
+[
+  { "id": "1001", "channel_id": "9001", "timestamp": "2024-04-05T10:00:00.000000+00:00", "author": { "id": "501", "name": "alice", "nickname": "Alice Example", "bot": false }, "content": "Rollout is green on staging." },
+  { "id": "1002", "channel_id": "9001", "timestamp": "2024-04-05T10:01:00.000000+00:00", "author": { "id": "502", "name": "bob", "bot": false }, "content": "I will verify the canary before we widen it." },
+  { "id": "1003", "channel_id": "9001", "timestamp": "2024-04-05T10:02:00.000000+00:00", "author": { "id": "999", "name": "webhook", "bot": true }, "content": "Build 88 succeeded." },
+  { "id": "1004", "channel_id": "9001", "timestamp": "2024-04-05T10:03:00.000000+00:00", "author": { "id": "501", "name": "alice", "bot": false }, "content": "" }
+]

@@ -1,0 +1,5 @@
+[
+  { "id": "U01SYNTH", "name": "alice", "profile": { "display_name": "Alice Example", "real_name": "Alice Example" }, "is_bot": false },
+  { "id": "U02SYNTH", "name": "bob", "profile": { "display_name": "", "real_name": "Bob Sample" }, "is_bot": false },
+  { "id": "U03BOT", "name": "deploybot", "profile": { "display_name": "deploybot" }, "is_bot": true }
+]
