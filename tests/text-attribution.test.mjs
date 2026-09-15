@@ -102,13 +102,18 @@ test("nothing is prefixed twice, and the paragraph text stays verbatim", () => {
     // turn it into `Lin：Lin: …`.
     assert.equal(file.body.includes("Lin：Lin:"), false, file.body.slice(0, 200));
 
-    // The anchor's own text is still exactly the raw bytes: the prefix is markup.
+    // The anchor's own text is still the source wording: the prefix is markup, so
+    // no speaker or timestamp leaks into the citation. A subtitle anchor covers
+    // the cue's envelope (index + timecode + text), so the invariant is that the
+    // unit text sits verbatim inside that range.
     const ledger = loadLedger({ root: join(root, "skills", "colleague", "sub", "knowledge") });
     const unit = resolveLedgerAnchor(ledger, "k0002");
     assert.ok(unit, "k0002 must resolve");
     const raw = readFileSync(join(root, "skills", "colleague", "sub", "knowledge", "raw", "subtitle", "interview.srt"));
-    assert.equal(raw.subarray(unit.byteStart, unit.byteEnd).toString("utf8"), unit.text);
+    const slice = raw.subarray(unit.byteStart, unit.byteEnd).toString("utf8");
+    assert.equal(slice.includes(unit.text), true, `the cue text must sit verbatim in its byte range:\n${slice}`);
     assert.equal(unit.text.startsWith("Lin"), true, `expected the cue text itself, got ${unit.text.slice(0, 40)}`);
+    assert.equal(unit.text.includes("00:00:03"), false, "the timecode is envelope, not citation text");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

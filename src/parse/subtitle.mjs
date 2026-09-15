@@ -211,12 +211,13 @@ export function splitCues(file, format) {
     }
 
     const lastBody = bodyLines.length > 0 ? bodyLines[bodyLines.length - 1] : lines[lineIndex];
-    // The byte range covers exactly the cue **text**: from the first line of body
-    // through the terminator of the last. The SubRip index and the timecode line
-    // identify the cue but are not its text, and including them would break the
-    // spine's invariant that an anchor's text is the verbatim raw-byte slice.
-    // They still reach the reader through `label`.
-    const firstLine = bodyLines.length > 0 ? bodyLines[0] : lines[lineIndex];
+    // The byte range is the whole cue **block**: the SubRip index line (or the
+    // WebVTT identifier), the timecode line, and the text. The spine's invariant is
+    // that an anchor's text is a *verbatim slice of the payload* — a superset keeps
+    // that true, and a reader following a citation to `test.srt` wants the cue it
+    // can see, timecode included. The range stops at the last text line, so cue N
+    // never swallows cue N+1's index.
+    const firstLine = indexLineText ?? lines[lineIndex];
     const byteStart = file.charToByte(firstLine.start);
     const byteEnd = file.charToByte(lastBody.terminatorEnd);
 
@@ -305,7 +306,11 @@ export function parseSubtitle(file, options = {}) {
         ? `cue ${cue.index} · ${cue.speaker} @ ${formatTimecode(cue.start)}`
         : `cue ${cue.index} @ ${formatTimecode(cue.start)}`,
       speaker: cue.speaker ?? null,
-      at: formatTimecode(cue.start),
+      // No `at`: a cue's timecode is cue *framing*, not attribution. It travels in
+      // `label` and in `meta.timecodes`, and the rendered paragraph stays
+      // `[k0001] <text>` — putting it in the prose would repeat it on every line of
+      // a transcript whose times the reader already has. A chat turn, by contrast,
+      // has a speaker and a moment, and that *is* attribution.
     })),
   );
 
