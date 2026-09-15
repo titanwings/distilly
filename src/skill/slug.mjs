@@ -73,7 +73,16 @@ export function resetPinyinTable() {
  * tone marks stripped, `ü` written as `v` (吕 → `lv`, not `lu`).
  */
 export function readingToSyllable(reading) {
-  return reading.normalize("NFD").replace(/\u0308/g, "v");
+  return (
+    reading
+      .normalize("NFD")
+      // The diaeresis becomes a v (lü → lv), because the slug alphabet has no ü.
+      .replace(/u\u0308/g, "v")
+      .replace(/\u0308/g, "v")
+      // Every other combining mark is a tone mark: meaningful in pinyin, noise in a
+      // slug. Without this "lǚ" arrives as "lu" + U+030C and the slug is "luv̌".
+      .replace(/[\u0300-\u036f]/g, "")
+  );
 }
 
 /**
@@ -84,11 +93,22 @@ export function readingToSyllable(reading) {
 export function pinyinSyllables(name, { table = loadPinyinTable() } = {}) {
   const text = String(name);
   const syllables = [];
+  // Non-Han text is collected in **runs**: a Latin name is one token, not one
+  // syllable per letter. Pushing each character separately turned "Zadie Smith"
+  // into "z-a-d-i-e-s-m-i-t-h".
+  let run = "";
+  const flushRun = () => {
+    if (run !== "") {
+      syllables.push(run);
+      run = "";
+    }
+  };
   for (const character of text) {
     if (!isHanCharacter(character)) {
-      syllables.push(character);
+      run += character;
       continue;
     }
+    flushRun();
     if (!table) {
       throw new SlugResolutionError(
         `cannot derive a slug from "${text}": the pinyin table assets/pinyin.json is missing`,
@@ -104,6 +124,7 @@ export function pinyinSyllables(name, { table = loadPinyinTable() } = {}) {
     }
     syllables.push(readingToSyllable(reading));
   }
+  flushRun();
   return syllables;
 }
 

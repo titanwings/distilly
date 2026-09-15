@@ -87,7 +87,7 @@ export function parseUnihan(text) {
     if (field === "kHanyuPinlu") {
       let total = 0;
       const entries = [];
-      for (const match of value.matchAll(/([a-zü]+)\((\d+)\)/g)) {
+      for (const match of value.matchAll(/([A-Za-z\u00C0-\u024F\u0300-\u036F]+)\((\d+)\)/g)) {
         const count = Number.parseInt(match[2], 10);
         total += count;
         entries.push({ reading: match[1], count });
@@ -111,11 +111,18 @@ export function buildAsset({ sourceDate, unicodeVersion, frequencies, readings }
       return left.character.codePointAt(0) - right.character.codePointAt(0);
     });
 
-  const selected = maxCharacters > 0 ? ranked.slice(0, maxCharacters) : ranked;
+  // Characters that carry a reading but no corpus frequency. They are real, common
+  // characters too — dropping them made the table cover 2404 of the 3500 it
+  // promised, and every one of the missing went to the explicit-slug fallback.
+  const unranked = [...readings.keys()]
+    .filter((character) => !frequencies.has(character))
+    .sort((left, right) => left.codePointAt(0) - right.codePointAt(0))
+    .map((character) => ({ character, total: 0, entries: [{ reading: readings.get(character), count: 0 }] }));
+
+  const ordered = [...ranked, ...unranked];
+  const selected = maxCharacters > 0 ? ordered.slice(0, maxCharacters) : ordered;
   const characters = {};
-  for (const entry of [...selected].sort(
-    (left, right) => left.character.codePointAt(0) - right.character.codePointAt(0),
-  )) {
+  for (const entry of selected) {
     const best =
       readings.get(entry.character) ??
       [...entry.entries].sort((left, right) => right.count - left.count)[0].reading;
@@ -143,7 +150,9 @@ export function buildAsset({ sourceDate, unicodeVersion, frequencies, readings }
     selection: {
       rule: "top N Han characters by summed kHanyuPinlu frequency; reading = first kMandarin, else the most frequent kHanyuPinlu reading",
       limit: maxCharacters,
-      covered_characters: frequencies.size,
+      // Every character this table could have described, not just the frequency-ranked
+      // ones: "covered" is about the source, not about which slice we kept.
+      covered_characters: new Set([...frequencies.keys(), ...readings.keys()]).size,
     },
     count: Object.keys(characters).length,
     characters,
