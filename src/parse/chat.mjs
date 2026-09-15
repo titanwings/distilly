@@ -755,7 +755,11 @@ function parseDiscord(file, value, warnings) {
       continue;
     }
     turns.push({
-      speaker: author.nickname || author.global_name || author.name || author.id || "unknown",
+      // Discord speaks two dialects: a bot-export JSON uses `name`, the REST API
+      // uses `username`, and both may carry `nickname`/`global_name`. The display
+      // name wins over the handle, and the raw id is the last resort — it used to
+      // be reached directly, so a REST page rendered people as "u2".
+      speaker: author.nickname || author.global_name || author.username || author.name || author.id || "unknown",
       timestamp: timestamp.iso ?? timestamp.raw,
       text,
       locateBy: text.trim().slice(0, 200),
@@ -920,8 +924,15 @@ export function parseChat(file, options = {}) {
     parser: "chat",
     format: detected.format,
     kind: meta?.conversations !== undefined ? "chat-thread" : "chat",
-    method: "user-export",
-    source: "chat",
+    // The caller knows how it obtained the bytes: `harvest` names the directory it
+    // read, the credentialed collectors name the API route and the credential file.
+    // Hardcoding these made every collection look like a local user export and
+    // dropped the credential provenance entirely.
+    method: options.method ?? "user-export",
+    source: options.source ?? "chat",
+    ...(options.credentialed === undefined ? {} : { credentialed: options.credentialed }),
+    ...(options.credential_file ? { credential_file: options.credential_file } : {}),
+    ...(options.credential_source ? { credential_source: options.credential_source } : {}),
     files: [file],
     records: turnsToRecords(file, turns, [], file.label),
     warnings,

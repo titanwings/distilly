@@ -90,14 +90,19 @@ test("discord: two pages, verbatim bytes, anchored text", async () => {
   assert.equal(calls[1].includes("before=m002"), true, "the second page asks for messages before the oldest id");
 
   // Raw bytes are what Discord sent, not a re-serialisation.
-  assert.equal(box.read("knowledge/raw/discord/c1-p001.json"), JSON.stringify(pages[0]));
+  assert.equal(box.read("skills/colleague/demo/knowledge/raw/discord/c1-p001.json"), JSON.stringify(pages[0]));
   const textDir = join(box.work, "skills", "colleague", "demo", "knowledge", "text");
-  const body = readFileSync(join(textDir, readdirSync(textDir)[0]), "utf8");
+  // Two pages, two documents: the second one is stemmed so it cannot overwrite the
+  // first (see the text-collision rule in `ledger.mjs`). Reading
+  // `readdirSync(textDir)[0]` made the assertion depend on directory order.
+  const files = readdirSync(textDir).sort();
+  assert.equal(files.length, 2, `expected one text file per page, got ${files.join(", ")}`);
+  const body = files.map((name) => readFileSync(join(textDir, name), "utf8")).join("\n");
   assert.match(body, /^\[k0001\] 2024-03-01T10:00:00\.000Z 林工：第 0 条/m, body.slice(0, 200));
   assert.equal(body.includes("u1："), false, "the REST author name is used, not the raw id");
 
   const ledger = box.json("skills/colleague/demo/knowledge/index.json");
-  assert.equal(ledger.length, 1, "one entry per page, carrying raw and text");
+  assert.equal(ledger.length, 2, "one entry per page, each carrying raw and text");
   assert.equal(ledger[0].method, "api-bot-token");
   assert.equal(ledger[0].credentialed, true);
   assert.equal(ledger[0].credential_file, "discord_config.json");
@@ -260,7 +265,15 @@ test("the kit keeps credentials out of receipts and refuses unknown verbs", () =
 
 test("both channels are on the CLI and no longer listed as pending", async () => {
   const { PENDING_CHANNELS } = await import("../src/commands/credentialed.mjs");
-  assert.deepEqual(Object.keys(PENDING_CHANNELS).sort(), ["gmail", "reddit"]);
+  // `PENDING_CHANNELS` listed the channels that had no collector yet; discord and
+  // notion were the last two to leave it, and now every CONTRACT §1 channel ships,
+  // so the honest assertion is that nothing is waiting. A non-empty map means a
+  // channel regressed to "planned".
+  assert.deepEqual(
+    Object.keys(PENDING_CHANNELS).sort(),
+    [],
+    "every contract channel is implemented in this build",
+  );
   const cli = await import("../src/commands/credentialed.mjs");
   assert.equal(typeof cli, "object");
 });

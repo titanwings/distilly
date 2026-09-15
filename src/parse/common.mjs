@@ -1129,6 +1129,11 @@ export function buildDocument(input) {
     kind: input.kind,
     method: input.method ?? "local-file",
     credentialed: Boolean(input.credentialed),
+    // Which credential *file* the run read (never its contents). A receipt that
+    // says "credentialed: true" without naming the file cannot answer "which key
+    // was used", and the ledger is the only place that survives the run.
+    ...(input.credential_file ? { credential_file: input.credential_file } : {}),
+    ...(input.credential_source ? { credential_source: input.credential_source } : {}),
     source: input.source,
     origin: input.origin ?? files[0].path,
     // `name` identifies the file inside the bucket and is what `units[].file`

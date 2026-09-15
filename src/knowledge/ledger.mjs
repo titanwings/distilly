@@ -353,6 +353,8 @@ export function buildEntry(document, options = {}) {
     sha256: options.sha256 ?? primary.sha256,
     credentialed: Boolean(document.credentialed),
     method: document.method ?? "local-file",
+    ...(document.credential_file ? { credential_file: document.credential_file } : {}),
+    ...(document.credential_source ? { credential_source: document.credential_source } : {}),
     // Which handles were canonicalised into this entry, and how many turns changed.
     // Recorded so a reader can tell an identity-aware import from a raw one.
     ...(document.identity ? { identity: document.identity } : {}),
