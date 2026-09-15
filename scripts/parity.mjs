@@ -478,28 +478,28 @@ compareTrees("A library", join(pyRoot, "out"), join(nodeRoot, "out"));
 const CLI_STEPS = [
   {
     name: "create",
-    python: ["tools/skill_writer.py", "--action", "create", "--character", "colleague", "--slug", "eulalie", "--name", "Eulalie", "--meta", "meta.json", "--work", "work.md", "--persona", "persona.md", "--base-dir", "skills/colleague"],
-    node: ["skill", "create", "--character", "colleague", "--slug", "eulalie", "--name", "Eulalie", "--meta", "meta.json", "--work", "work.md", "--persona", "persona.md", "--base-dir", "skills/colleague"],
+    python: ["tools/skill_writer.py", "--action", "create", "--character", "colleague", "--slug", "eulalie", "--name", "Eulalie", "--meta", "meta.json", "--work", "work.md", "--persona", "persona.md", "--skills-dir", "skills/colleague"],
+    node: ["skill", "create", "--character", "colleague", "--slug", "eulalie", "--name", "Eulalie", "--meta", "meta.json", "--work", "work.md", "--persona", "persona.md", "--skills-dir", "skills/colleague"],
   },
   {
     name: "create-pinyin-name",
-    python: ["tools/skill_writer.py", "--action", "create", "--character", "colleague", "--name", "Zadie Smith", "--base-dir", "skills/colleague"],
-    node: ["skill", "create", "--character", "colleague", "--name", "Zadie Smith", "--base-dir", "skills/colleague"],
+    python: ["tools/skill_writer.py", "--action", "create", "--character", "colleague", "--name", "Zadie Smith", "--skills-dir", "skills/colleague"],
+    node: ["skill", "create", "--character", "colleague", "--name", "Zadie Smith", "--skills-dir", "skills/colleague"],
   },
   {
     name: "list",
-    python: ["tools/skill_writer.py", "--action", "list", "--character", "colleague", "--base-dir", "skills/colleague"],
-    node: ["skill", "list", "--character", "colleague", "--base-dir", "skills/colleague"],
+    python: ["tools/skill_writer.py", "--action", "list", "--character", "colleague", "--skills-dir", "skills/colleague"],
+    node: ["skill", "list", "--character", "colleague", "--skills-dir", "skills/colleague"],
   },
   {
     name: "update",
-    python: ["tools/skill_writer.py", "--action", "update", "--character", "colleague", "--slug", "eulalie", "--base-dir", "skills/colleague", "--work-patch", "patch.md", "--correction-json", "correction.json"],
-    node: ["skill", "update", "--character", "colleague", "--slug", "eulalie", "--base-dir", "skills/colleague", "--work-patch", "patch.md", "--correction-json", "correction.json"],
+    python: ["tools/skill_writer.py", "--action", "update", "--character", "colleague", "--slug", "eulalie", "--skills-dir", "skills/colleague", "--work-patch", "patch.md", "--correction-json", "correction.json"],
+    node: ["skill", "update", "--character", "colleague", "--slug", "eulalie", "--skills-dir", "skills/colleague", "--work-patch", "patch.md", "--correction-json", "correction.json"],
   },
-  { name: "version-list", python: ["tools/version_manager.py", "--action", "list", "--slug", "eulalie", "--base-dir", "skills/colleague"], node: ["skill", "version", "list", "--slug", "eulalie", "--base-dir", "skills/colleague"] },
-  { name: "version-backup", python: ["tools/version_manager.py", "--action", "backup", "--slug", "eulalie", "--base-dir", "skills/colleague"], node: ["skill", "version", "backup", "--slug", "eulalie", "--base-dir", "skills/colleague"] },
-  { name: "version-rollback", python: ["tools/version_manager.py", "--action", "rollback", "--slug", "eulalie", "--version", "v1", "--base-dir", "skills/colleague"], node: ["skill", "version", "rollback", "--slug", "eulalie", "--version", "v1", "--base-dir", "skills/colleague"] },
-  { name: "version-cleanup", python: ["tools/version_manager.py", "--action", "cleanup", "--slug", "eulalie", "--base-dir", "skills/colleague"], node: ["skill", "version", "cleanup", "--slug", "eulalie", "--base-dir", "skills/colleague"] },
+  { name: "version-list", python: ["tools/version_manager.py", "--action", "list", "--slug", "eulalie", "--skills-dir", "skills/colleague"], node: ["skill", "version", "list", "--slug", "eulalie", "--skills-dir", "skills/colleague"] },
+  { name: "version-backup", python: ["tools/version_manager.py", "--action", "backup", "--slug", "eulalie", "--skills-dir", "skills/colleague"], node: ["skill", "version", "backup", "--slug", "eulalie", "--skills-dir", "skills/colleague"] },
+  { name: "version-rollback", python: ["tools/version_manager.py", "--action", "rollback", "--slug", "eulalie", "--version", "v1", "--skills-dir", "skills/colleague"], node: ["skill", "version", "rollback", "--slug", "eulalie", "--version", "v1", "--skills-dir", "skills/colleague"] },
+  { name: "version-cleanup", python: ["tools/version_manager.py", "--action", "cleanup", "--slug", "eulalie", "--skills-dir", "skills/colleague"], node: ["skill", "version", "cleanup", "--slug", "eulalie", "--skills-dir", "skills/colleague"] },
 ];
 
 function seedCliSandbox(root) {

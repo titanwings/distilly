@@ -115,7 +115,7 @@ test("Claude auto-install is opt-in and keeps the legacy env variable working", 
           workPath,
           "--persona",
           personaPath,
-          "--base-dir",
+          "--skills-dir",
           baseDir,
           ...extraArgs,
         ],
@@ -158,14 +158,14 @@ test("Claude auto-install is opt-in and keeps the legacy env variable working", 
 test("create with only --name normalises the slug and rejects an unsafe explicit slug", () => {
   const root = tempDir();
   try {
-    const created = runCmd(["skill", "create", "--name", "Zadie Smith", "--base-dir", "skills/colleague"], {
+    const created = runCmd(["skill", "create", "--name", "Zadie Smith", "--skills-dir", "skills/colleague"], {
       cwd: root,
     });
     assert.equal(created.status, 0, created.stderr);
     const generated = join(root, "skills", "colleague", "zadie-smith", "SKILL.md");
     assert.match(readFileSync(generated, "utf8"), /name: colleague-zadie-smith/);
 
-    const unsafe = runCmd(["skill", "create", "--slug", "../escape", "--base-dir", "skills/colleague"], {
+    const unsafe = runCmd(["skill", "create", "--slug", "../escape", "--skills-dir", "skills/colleague"], {
       cwd: root,
     });
     assert.notEqual(unsafe.status, 0);
@@ -180,7 +180,7 @@ test("update accepts a safe legacy slug with spaces", () => {
   try {
     const baseDir = join(root, "skills", "colleague");
     const create = runCmd(
-      ["skill", "create", "--slug", "legacy", "--name", "Zadie Smith", "--base-dir", baseDir],
+      ["skill", "create", "--slug", "legacy", "--name", "Zadie Smith", "--skills-dir", baseDir],
       { cwd: root },
     );
     assert.equal(create.status, 0, create.stderr);
@@ -190,7 +190,7 @@ test("update accepts a safe legacy slug with spaces", () => {
     writeFileSync(workPatch, "## Update\n\nLegacy directory remains addressable.\n", "utf8");
 
     const update = runCmd(
-      ["skill", "update", "--slug", "Zadie Smith", "--base-dir", baseDir, "--work-patch", workPatch],
+      ["skill", "update", "--slug", "Zadie Smith", "--skills-dir", baseDir, "--work-patch", workPatch],
       { cwd: root },
     );
 
@@ -212,7 +212,7 @@ test("the version manager rejects slug and version traversal", () => {
     const victimVersions = join(root, "skills", "victim", "versions");
     for (let index = 0; index < 11; index += 1) mkdirSync(join(victimVersions, `v${index}`), { recursive: true });
 
-    const traversal = runCmd(["skill", "version", "cleanup", "--slug", "../victim", "--base-dir", baseDir], {
+    const traversal = runCmd(["skill", "version", "cleanup", "--slug", "../victim", "--skills-dir", baseDir], {
       cwd: root,
     });
     assert.notEqual(traversal.status, 0);
@@ -221,12 +221,12 @@ test("the version manager rejects slug and version traversal", () => {
     // too many) and called `readFileSync` on a directory, so it could never pass.
     assert.equal(readdirSync(victimVersions).length, 11, "the refused traversal must leave the other skill alone");
 
-    const create = runCmd(["skill", "create", "--slug", "safe", "--name", "Safe", "--base-dir", baseDir], {
+    const create = runCmd(["skill", "create", "--slug", "safe", "--name", "Safe", "--skills-dir", baseDir], {
       cwd: root,
     });
     assert.equal(create.status, 0, create.stderr);
     const rollbackTraversal = runCmd(
-      ["skill", "version", "rollback", "--slug", "safe", "--version", "../victim", "--base-dir", baseDir],
+      ["skill", "version", "rollback", "--slug", "safe", "--version", "../victim", "--skills-dir", baseDir],
       { cwd: root },
     );
     assert.notEqual(rollbackTraversal.status, 0);
@@ -316,7 +316,7 @@ test("each character family survives the full CLI lifecycle", () => {
           workPath,
           "--persona",
           personaPath,
-          "--base-dir",
+          "--skills-dir",
           baseDir,
         ],
         { cwd: root },
@@ -328,7 +328,7 @@ test("each character family survives the full CLI lifecycle", () => {
       assert.ok(existsSync(join(skillDir, "SKILL.md")));
       assert.ok(existsSync(join(skillDir, "manifest.json")));
 
-      const listResult = runCmd(["skill", "list", "--character", character, "--base-dir", baseDir], { cwd: root });
+      const listResult = runCmd(["skill", "list", "--character", character, "--skills-dir", baseDir], { cwd: root });
       assert.match(listResult.stdout, new RegExp(fixture.slug));
       assert.match(listResult.stdout, new RegExp(`Character: ${character}`));
 
@@ -344,7 +344,7 @@ test("each character family survives the full CLI lifecycle", () => {
           workPatchPath,
           "--correction-json",
           correctionPath,
-          "--base-dir",
+          "--skills-dir",
           baseDir,
         ],
         { cwd: root },
@@ -353,7 +353,7 @@ test("each character family survives the full CLI lifecycle", () => {
       assert.match(update.stdout, /Updated skill to v2/);
 
       const versions = runCmd(
-        ["skill", "version", "list", "--character", character, "--slug", fixture.slug, "--base-dir", baseDir],
+        ["skill", "version", "list", "--character", character, "--slug", fixture.slug, "--skills-dir", baseDir],
         { cwd: root },
       );
       assert.match(versions.stdout, /v1/);
@@ -369,7 +369,7 @@ test("each character family survives the full CLI lifecycle", () => {
           fixture.slug,
           "--version",
           "v1",
-          "--base-dir",
+          "--skills-dir",
           baseDir,
         ],
         { cwd: root },
@@ -435,7 +435,7 @@ test("the CLI installs a generated skill into the supported host paths", () => {
         workPath,
         "--persona",
         personaPath,
-        "--base-dir",
+        "--skills-dir",
         baseDir,
         "--install-claude-skill",
         "--install-claude-command-shim",

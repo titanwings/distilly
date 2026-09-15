@@ -17,13 +17,19 @@ import { join } from "node:path";
 import { register } from "./index.mjs";
 import { CliError, createReceipt, describeFile, displayPath } from "../cli/receipt.mjs";
 import { parseArgs } from "../cli/args.mjs";
-import { getCharacterPreset, normalizeCharacter, normalizeResearchProfile, resolveExistingStorageRoot } from "../skill/presets.mjs";
+import {
+  getCharacterPreset,
+  normalizeCharacter,
+  normalizeResearchProfile,
+  resolveExistingStorageRoot,
+  resolveSkillsDir,
+  resolveStorageRoot,
+} from "../skill/presets.mjs";
 import { resolveContainedChild, validatePathSegment } from "../skill/schema.mjs";
 import {
   createSkill,
   installGeneratedHosts,
   listSkills,
-  resolveBaseDir,
   slugify,
   updateSkill,
   validateSlug,
@@ -42,11 +48,11 @@ export function skillHelp(binary = "distilly") {
     "用法：",
     `  ${binary} skill create  --character <colleague|relationship|celebrity> [--slug <slug>|--name <name>]`,
     "                        [--meta <meta.json>] [--work <work.md>] [--persona <persona.md>]",
-    "                        [--base-dir <dir>] [--research-profile <name>]",
+    "                        [--base-dir <workspace>|--skills-dir <dir>] [--research-profile <name>]",
     "                        [--install-claude-skill] [--install-openclaw-skill] [--install-codex-skill]",
-    `  ${binary} skill update  --slug <slug> [--character <family>] [--base-dir <dir>]`,
+    `  ${binary} skill update  --slug <slug> [--character <family>] [--base-dir <workspace>|--skills-dir <dir>]`,
     "                        [--work-patch <file>] [--persona-patch <file>] [--correction-json <file>]",
-    `  ${binary} skill list    [--character <family>] [--base-dir <dir>]`,
+    `  ${binary} skill list    [--character <family>] [--base-dir <workspace>|--skills-dir <dir>]`,
     `  ${binary} skill version <list|backup|rollback|cleanup> --slug <slug> [--version <vN>]`,
     "",
     "说明：",
@@ -54,16 +60,18 @@ export function skillHelp(binary = "distilly") {
     "  不带 --slug 时用 --name 生成拼音 slug（Unihan 表）；表缺失或字符未覆盖时明确失败并要求 --slug。",
     "  update 先把当前产物归档到 versions/<当前版本>/，版本号 +1。",
     "  version 管理归档：list / backup / rollback / cleanup（默认保留最近 10 个）。",
+    "  --base-dir 是工作区根（下面有 skills/），与 harvest / doctor / retrospect / view 一致；",
+    "  --skills-dir 直接指定存放 <slug>/ 的那一层。两者不能同时给，同时给会报错而不是猜。",
   ].join("\n");
   const en = [
     "Usage:",
     `  ${binary} skill create  --character <colleague|relationship|celebrity> [--slug <slug>|--name <name>]`,
     "                        [--meta <meta.json>] [--work <work.md>] [--persona <persona.md>]",
-    "                        [--base-dir <dir>] [--research-profile <name>]",
+    "                        [--base-dir <workspace>|--skills-dir <dir>] [--research-profile <name>]",
     "                        [--install-claude-skill] [--install-openclaw-skill] [--install-codex-skill]",
-    `  ${binary} skill update  --slug <slug> [--character <family>] [--base-dir <dir>]`,
+    `  ${binary} skill update  --slug <slug> [--character <family>] [--base-dir <workspace>|--skills-dir <dir>]`,
     "                        [--work-patch <file>] [--persona-patch <file>] [--correction-json <file>]",
-    `  ${binary} skill list    [--character <family>] [--base-dir <dir>]`,
+    `  ${binary} skill list    [--character <family>] [--base-dir <workspace>|--skills-dir <dir>]`,
     `  ${binary} skill version <list|backup|rollback|cleanup> --slug <slug> [--version <vN>]`,
     "",
     "Notes:",
@@ -71,6 +79,8 @@ export function skillHelp(binary = "distilly") {
     "  Without --slug the slug is derived from --name through the Unihan pinyin table; a missing table or an uncovered character fails loudly and asks for --slug.",
     "  update archives the current artifacts under versions/<current>/ first, then bumps the version.",
     "  version manages the archive: list / backup / rollback / cleanup (keeps the newest 10 by default).",
+    "  --base-dir is the workspace root (the directory holding skills/), as in harvest / doctor / retrospect / view;",
+    "  --skills-dir names the layer that directly contains <slug>/. The two cannot be combined — that errors instead of guessing.",
   ].join("\n");
   return { zh, en };
 }
@@ -91,7 +101,45 @@ const SELECT_OPTIONS = {
   character: { type: "string", alias: "c", value: "family" },
   type: { type: "string", value: "family" },
   "base-dir": { type: "string", value: "dir" },
+  "skills-dir": { type: "string", value: "dir" },
 };
+
+/**
+ * Where `<slug>/` lives for this family.
+ *
+ * `--base-dir` is the **workspace root** — the directory holding `skills/` — which is
+ * the one meaning that flag carries across the CLI (`harvest`, `doctor`, `retrospect`,
+ * `view`, `skill`). `--skills-dir` names the storage root itself. Passing both is a
+ * usage error rather than a silent winner: the ambiguity between "the workspace" and
+ * "the storage root" is what let the documented five-step flow write a Skill next to
+ * its evidence instead of into it.
+ */
+function storageRootFrom(flags, character) {
+  const workspace = flags["base-dir"];
+  const skillsDir = flags["skills-dir"];
+  if (workspace && skillsDir) {
+    throw new CliError("--base-dir and --skills-dir cannot be combined", {
+      code: "ambiguous-target",
+      remedy: "pass --base-dir <workspace> (the directory holding skills/) or --skills-dir <storage root>, not both",
+    });
+  }
+  if (skillsDir) return resolveSkillsDir(skillsDir);
+  return resolveStorageRoot(character, workspace ?? null);
+}
+
+/** The same, for the commands that must *find* an existing Skill (update/list/version). */
+function existingStorageRootFrom(flags, character, slug) {
+  const workspace = flags["base-dir"];
+  const skillsDir = flags["skills-dir"];
+  if (workspace && skillsDir) {
+    throw new CliError("--base-dir and --skills-dir cannot be combined", {
+      code: "ambiguous-target",
+      remedy: "pass --base-dir <workspace> (the directory holding skills/) or --skills-dir <storage root>, not both",
+    });
+  }
+  if (skillsDir) return resolveSkillsDir(skillsDir);
+  return resolveExistingStorageRoot(character, slug, workspace ?? null);
+}
 
 const CREATE_OPTIONS = {
   ...SELECT_OPTIONS,
@@ -196,7 +244,7 @@ const createCommand = {
     );
     meta.type = meta.type || meta.character;
 
-    const baseDir = resolveBaseDir(flags["base-dir"], requestedCharacter);
+    const baseDir = storageRootFrom(flags, requestedCharacter);
     let slug;
     try {
       slug = flags.slug
@@ -274,7 +322,7 @@ const updateCommand = {
       });
     }
 
-    const baseDir = resolveExistingStorageRoot(requestedCharacter, slug, flags["base-dir"]);
+    const baseDir = existingStorageRootFrom(flags, requestedCharacter, slug);
     const skillDir = resolveSkillDir(baseDir, slug);
 
     const workPatch = flags["work-patch"] ? readTextFlag(flags["work-patch"], "work patch") : null;
@@ -332,7 +380,7 @@ const listCommand = {
   run({ argv, reporter }) {
     const { flags } = parseArgs(argv, SELECT_OPTIONS);
     const requestedCharacter = normalizeCharacter(flags.character || flags.type);
-    const baseDir = resolveExistingStorageRoot(requestedCharacter, null, flags["base-dir"]);
+    const baseDir = existingStorageRootFrom(flags, requestedCharacter, null);
     const skills = listSkills(baseDir);
 
     if (skills.length === 0) {
@@ -391,7 +439,7 @@ const versionCommand = {
         remedy: "pass --slug <name-of-existing-skill-directory>.",
       });
     }
-    const baseDir = resolveExistingStorageRoot(requestedCharacter, slug, flags["base-dir"]);
+    const baseDir = existingStorageRootFrom(flags, requestedCharacter, slug);
     const skillDir = resolveSkillDir(baseDir, slug);
 
     let outputs = [];

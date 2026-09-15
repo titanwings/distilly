@@ -853,13 +853,15 @@ export function deriveDocuments(corpus) {
 const HELP = `distilly retrospect — 纯派生：knowledge/ → evidence/derived/*.json
 
 用法 / Usage:
-  distilly retrospect --person <slug> [--json]
+  distilly retrospect --person <slug> [--base-dir <workspace>] [--json]
   distilly retrospect --dir <person-dir> [--json]
   distilly retrospect --help
 
 选项 / Options:
-  --person <slug>   在 ./skills/*/<slug>/ 下查找该人的目录
-  --dir <path>      直接指定人的目录（含 knowledge/index.json）
+  --person <slug>   人物 slug；在 <工作区>/skills/*/<slug>/ 下查找
+  --base-dir <dir>  工作区根（下面有 skills/）；默认当前目录。
+                    与 harvest / doctor / view / skill 的含义一致
+  --dir <path>      直接指定**人物目录本身**（含 knowledge/index.json），不做查找
   --json            只打印机器可读回执 / print the machine-readable receipt only
   --help            打印本帮助 / print this help
 
@@ -878,17 +880,18 @@ No network and no model call: the same input produces byte-identical output.
 `;
 
 function parseArgs(args) {
-  const options = { person: null, dir: null, json: false, help: false };
+  const options = { person: null, dir: null, baseDir: null, json: false, help: false };
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     if (arg === "--help" || arg === "-h") options.help = true;
     else if (arg === "--json") options.json = true;
-    else if (arg === "--person" || arg === "--dir") {
+    else if (arg === "--person" || arg === "--dir" || arg === "--base-dir") {
       const value = args[index + 1];
       if (!value || value.startsWith("--")) {
         return { error: `${arg} requires a value` };
       }
-      options[arg === "--person" ? "person" : "dir"] = value;
+      const key = arg === "--person" ? "person" : arg === "--dir" ? "dir" : "baseDir";
+      options[key] = value;
       index += 1;
     } else return { error: `unknown option: ${arg}` };
   }
@@ -916,20 +919,26 @@ export function resolvePersonRoot(options, cwd) {
     const path = resolve(cwd, options.dir);
     return hasLedger(path) ? { root: path } : { error: `${path} has no knowledge/index.json` };
   }
+  // `--base-dir` is the **workspace root** — the directory that holds `skills/` — the
+  // same meaning it carries in `harvest`, `doctor`, `view` and `skill`. `--dir` above
+  // stays the explicit person directory. Before this, `retrospect` had no `--base-dir`
+  // at all and its `--dir` help called a person directory "the skills root", so a
+  // caller following the help pointed it at the wrong level.
+  const workspace = options.baseDir ? resolve(cwd, options.baseDir) : cwd;
   if (options.person) {
     const candidates = [
-      join(cwd, "skills", "colleague", options.person),
-      ...familyDirs(join(cwd, "skills")).map((family) => join(family, options.person)),
+      join(workspace, "skills", "colleague", options.person),
+      ...familyDirs(join(workspace, "skills")).map((family) => join(family, options.person)),
     ];
     for (const candidate of unique(candidates)) {
       if (hasLedger(candidate)) return { root: candidate };
     }
     return {
-      error: `${join(cwd, "skills", "*", options.person)} has no knowledge/index.json`,
+      error: `${join(workspace, "skills", "*", options.person)} has no knowledge/index.json`,
     };
   }
-  if (hasLedger(cwd)) return { root: cwd };
-  return { error: `${cwd} has no knowledge/index.json` };
+  if (hasLedger(workspace)) return { root: workspace };
+  return { error: `${workspace} has no knowledge/index.json` };
 }
 
 function writeDerivedFiles(personRoot, documents) {

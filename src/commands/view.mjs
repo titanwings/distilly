@@ -21,6 +21,11 @@ const OPTIONS = {
   slug: { type: "string", value: "slug" },
   file: { type: "string", value: "path" },
   root: { type: "string", value: "dir" },
+  // `--base-dir` is the CLI-wide spelling of "workspace root" (harvest / doctor /
+  // retrospect / skill all take it that way). `view` accepted only `--root` while
+  // `distilly view --help` advertised `--base-dir`, so the documented flag died with
+  // `unknown option: --base-dir`. Both spellings now mean the same thing.
+  "base-dir": { type: "string", value: "dir" },
   out: { type: "string", value: "path" },
   shareable: { type: "boolean" },
   // 声明「我知道这里有缺口」：只把「本节稀薄」从错误降为警告
@@ -33,10 +38,18 @@ function parseViewArgs(argv) {
     const arg = argv[index];
     if (arg === "--shareable") options.shareable = true;
     else if (arg === "--allow-missing") options.allowMissing = true;
-    else if (arg === "--person" || arg === "--slug" || arg === "--file" || arg === "--root" || arg === "--out") {
+    else if (
+      arg === "--person" ||
+      arg === "--slug" ||
+      arg === "--file" ||
+      arg === "--root" ||
+      arg === "--base-dir" ||
+      arg === "--out"
+    ) {
       const value = argv[index + 1];
       if (!value) throw new Error(`${arg} requires a value`);
-      options[arg === "--person" ? "slug" : arg.slice(2)] = value;
+      const key = arg === "--person" ? "slug" : arg === "--base-dir" ? "root" : arg.slice(2);
+      options[key] = value;
       index += 1;
     } else if (arg.startsWith("--")) throw new Error(`unknown option: ${arg}`);
     else if (arg.endsWith(".view.json") && !options.file && !options.slug) options.file = arg;
@@ -65,18 +78,20 @@ function resolveViewPath(options) {
 function helpFor(sub) {
   const zh = [
     "用法：",
-    `  distilly view ${sub} [--person <slug>|--file <path>] [--root <dir>] [--json]`,
+    `  distilly view ${sub} [--person <slug>|--file <path>] [--base-dir <workspace>|--root <dir>] [--json]`,
     sub === "render" ? "  distilly view render [--out <path>] [--shareable]" : "",
     "",
     "说明：",
+    "  --base-dir 是工作区根（下面有 skills/），与 harvest / doctor / retrospect / skill 一致；--root 是同义别名。",
     "  默认私有模式只输出结论与锚点编号；--shareable 才内联原文并写进回执。",
   ].filter(Boolean).join("\n");
   const en = [
     "Usage:",
-    `  distilly view ${sub} [--person <slug>|--file <path>] [--root <dir>] [--json]`,
+    `  distilly view ${sub} [--person <slug>|--file <path>] [--base-dir <workspace>|--root <dir>] [--json]`,
     sub === "render" ? "  distilly view render [--out <path>] [--shareable]" : "",
     "",
     "Notes:",
+    "  --base-dir is the workspace root (the directory holding skills/), the same meaning it has in harvest / doctor / retrospect / skill; --root is an alias.",
     "  Private mode (default) prints conclusions plus anchor ids only; --shareable inlines quotes and records them in the receipt.",
   ].filter(Boolean).join("\n");
   return { zh, en };

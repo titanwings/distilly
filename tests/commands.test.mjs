@@ -215,7 +215,7 @@ test("--json keeps stdout machine-readable for every command this branch ships",
   const root = tempDir();
   try {
     const invocations = [
-      ["skill", "list", "--character", "colleague", "--base-dir", "skills/colleague", "--json"],
+      ["skill", "list", "--character", "colleague", "--skills-dir", "skills/colleague", "--json"],
       ["doctor", "--json"],
       ["install", "codex", "--dry-run", "--json"],
     ];

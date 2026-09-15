@@ -8,7 +8,7 @@
  */
 
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 export const COMMON_KNOWLEDGE_DIRS = ["docs", "messages", "emails"];
 
@@ -255,15 +255,42 @@ export function expandUser(inputPath, home) {
   return inputPath;
 }
 
-/** Resolve the canonical write target for a character family. */
+/** The workspace-root-relative storage location of a family, e.g. `skills/colleague`. */
+export function storageRootFor(character) {
+  const preset = getCharacterPreset(character);
+  return preset.storage_root || preset.legacy_storage_root;
+}
+
+/**
+ * Resolve an explicit storage root (`--skills-dir`): the directory that directly
+ * contains `<slug>/`. This is the escape hatch for callers that already resolved the
+ * location and do not want the workspace-root convention applied on top of it.
+ */
+export function resolveSkillsDir(dir) {
+  return resolve(expandUser(String(dir)));
+}
+
+/**
+ * Resolve the canonical write target for a character family.
+ *
+ * `baseDirArg` is the **workspace root** — the directory that contains `skills/` —
+ * the one meaning `--base-dir` carries across this CLI (`harvest`, `doctor`,
+ * `retrospect`, `view`, `skill`). It used to be read as the storage root itself, so
+ * `skill create --base-dir /w` wrote `/w/<slug>` while `harvest --base-dir /w` wrote
+ * `/w/skills/colleague/<person>`: the documented five-step flow put the generated
+ * Skill *next to* its evidence instead of inside it, printed "Created skill", and
+ * exited 0. Use `--skills-dir` when you mean the storage root directly.
+ */
 export function resolveStorageRoot(character, baseDirArg = null) {
-  if (baseDirArg) return expandUser(baseDirArg);
+  if (baseDirArg) return join(resolve(expandUser(baseDirArg)), storageRootFor(character));
   return canonicalStorageRoot(character);
 }
 
 /** Resolve an existing storage root while keeping legacy paths readable. */
 export function resolveExistingStorageRoot(character, slug = null, baseDirArg = null) {
-  if (baseDirArg) return expandUser(baseDirArg);
+  // An explicit workspace root is authoritative: no legacy probing under a path the
+  // caller just named, which is how "it silently used a different skills/" starts.
+  if (baseDirArg) return join(resolve(expandUser(baseDirArg)), storageRootFor(character));
 
   const canonical = canonicalStorageRoot(character);
   const legacy = legacyStorageRoot(character);

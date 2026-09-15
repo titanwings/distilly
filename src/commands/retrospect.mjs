@@ -33,7 +33,7 @@ const help = {
 
 register("retrospect", {
   summary: "确定性回望派生 / deterministic retrospection",
-  usage: "distilly retrospect [--person <slug>] [--dir <dir>] [--json]",
+  usage: "distilly retrospect [--person <slug>] [--base-dir <workspace>] [--dir <person-dir>] [--json]",
   ...help,
   run({ argv, json, reporter }) {
     const sink = (write) => ({ write: (chunk) => write(String(chunk).replace(/\n$/, "")) });

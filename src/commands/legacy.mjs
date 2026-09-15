@@ -62,17 +62,38 @@ function splitAction(argv, tool, allowed) {
   return { action, rest };
 }
 
+/**
+ * Translate the deprecated spelling of the storage root into the modern one.
+ *
+ * The Python tools these commands forward to took `--base-dir <storage root>`, the
+ * directory that directly contains `<slug>/`. The modern CLI calls that
+ * `--skills-dir` and reserves `--base-dir` for the workspace root (the directory
+ * holding `skills/`). Forwarding the old flag name verbatim would therefore write a
+ * legacy invocation's Skill one level deeper than before — into a directory nobody
+ * looks at — while still reporting success. A forwarded command line is a caller
+ * that cannot be asked to change, so the adapter translates for it.
+ */
+function moderniseLegacyStorageRoot(argv) {
+  const out = [];
+  for (const arg of argv) {
+    if (arg === "--base-dir") out.push("--skills-dir");
+    else if (arg.startsWith("--base-dir=")) out.push(`--skills-dir=${arg.slice("--base-dir=".length)}`);
+    else out.push(arg);
+  }
+  return out;
+}
+
 function legacyWriter({ argv, json, reporter, ctx }) {
   const { action, rest } = splitAction(argv, "skill_writer.py", Object.keys(WRITER_ACTIONS));
   const target = WRITER_ACTIONS[action];
   deprecation("skill_writer.py", `distilly ${target}`, reporter);
-  return runRegistered(target, rest, { json, reporter, ctx }, reporter);
+  return runRegistered(target, moderniseLegacyStorageRoot(rest), { json, reporter, ctx }, reporter);
 }
 
 function legacyVersionManager({ argv, json, reporter, ctx }) {
   const { action, rest } = splitAction(argv, "version_manager.py", VERSION_ACTIONS);
   deprecation("version_manager.py", `distilly skill version ${action}`, reporter);
-  return runRegistered("skill version", [action, ...rest], { json, reporter, ctx }, reporter);
+  return runRegistered("skill version", [action, ...moderniseLegacyStorageRoot(rest)], { json, reporter, ctx }, reporter);
 }
 
 const GENERATED_INSTALL_OPTIONS = {
