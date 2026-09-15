@@ -247,6 +247,10 @@ register("doctor", {
       unavailable,
     });
     receipt.skills = skillCount;
+    // The host inventory belongs in the receipt too: it is the part of `doctor`
+    // a caller most often wants to read programmatically (`--json` is the
+    // machine interface), and it was reachable only through the internal `extra`.
+    receipt.hosts = hostRows.map(({ host, installed, path }) => ({ host, installed, path }));
     return { receipt, extra: { hosts: hostRows, skills: skillCount } };
   },
 });

@@ -296,19 +296,49 @@ async function main() {
 
     /* 4 — dual theme contrast ------------------------------------------- */
     const themeRuns = [];
+    // `emulateMedia` resolves as soon as the emulation is applied; the page learns
+    // about it through a `matchMedia` change event and updates
+    // `data-theme-effective` a tick later. Probing immediately recorded the
+    // *previous* theme — which is how this gate went red roughly one run in two
+    // with byte-identical HTML (same sha256), and why the toggle then saw
+    // `before: "dark"` after being put back into light mode.
+    const settle = (scheme) =>
+      page
+        .waitForFunction(
+          (expected) => {
+            const current = document.documentElement.getAttribute("data-theme-effective");
+            return current === null || current === expected;
+          },
+          scheme,
+          { timeout: 2000 },
+        )
+        .catch(() => {});
     await page.emulateMedia({ colorScheme: "light" });
+    await settle("light");
     themeRuns.push(await page.evaluate(contrastProbe, SAMPLE_SELECTORS));
     await page.emulateMedia({ colorScheme: "dark" });
+    await settle("dark");
     themeRuns.push(await page.evaluate(contrastProbe, SAMPLE_SELECTORS));
     await page.emulateMedia({ colorScheme: "light" });
+    await settle("light");
     const toggle = await page.evaluate(() => {
       const button = document.getElementById("theme-toggle");
       if (!button) return { ok: false, reason: "no #theme-toggle button" };
       const before = document.documentElement.getAttribute("data-theme-effective");
       button.click();
-      const after = document.documentElement.getAttribute("data-theme-effective");
-      return { ok: before === "light" && after === "dark", before, after, pressed: button.getAttribute("aria-pressed"), label: button.textContent };
+      return { ok: null, before, after: null, pressed: button.getAttribute("aria-pressed"), label: button.textContent };
     });
+    // The click is handled by the page, so its effect is also a tick away.
+    toggle.after = await page
+      .waitForFunction(
+        (before) => document.documentElement.getAttribute("data-theme-effective") !== before,
+        toggle.before,
+        { timeout: 2000 },
+      )
+      .then(() => page.evaluate(() => document.documentElement.getAttribute("data-theme-effective")))
+      .catch(() => page.evaluate(() => document.documentElement.getAttribute("data-theme-effective")));
+    toggle.pressed = await page.evaluate(() => document.getElementById("theme-toggle")?.getAttribute("aria-pressed") ?? null);
+    toggle.ok = toggle.before === "light" && toggle.after === "dark";
     themeRuns.push(await page.evaluate(contrastProbe, SAMPLE_SELECTORS));
     const contrastFailures = [];
     for (const run of themeRuns) {

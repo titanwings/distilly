@@ -27,7 +27,11 @@ jobs:
           find bin src scripts tests -name '*.mjs' -print0 | xargs -0 -n1 node --check
 
       - name: Unit tests
-        run: node --test
+        # `npm test`, not a bare `node --test`: the bare form also collects
+        # `scripts/blind-test.mjs` (it matches `**/*-test.mjs`) and records its
+        # usage error as a failing test, so CI went red while every local command
+        # looked green.
+        run: npm test
 
       - name: Prompt contract lint
         run: node scripts/prompt-lint.mjs

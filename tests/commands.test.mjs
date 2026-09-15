@@ -141,10 +141,17 @@ test("doctor inventories every host and names what this build cannot do yet", ()
       assert.equal(row.installed, false);
       assert.equal(typeof row.path, "string");
     }
-    const unavailable = receipt.unavailable.map((item) => item.channel);
-    for (const command of ["harvest", "retrospect", "view", "collect"]) {
-      assert.ok(unavailable.includes(command), `${command} must be reported as unavailable`);
-    }
+    // This assertion used to require `harvest`, `retrospect`, `view` and
+    // `collect` to be listed as unavailable — written when they were still
+    // planned. Every CONTRACT §1 command ships in v2 and `PLANNED` is empty
+    // (`scripts/audit-objective.mjs` asserts exactly that), so the honest
+    // assertion is now the opposite: nothing is outstanding, and a non-empty
+    // list would mean a command regressed to "planned".
+    assert.deepEqual(
+      receipt.unavailable.map((item) => item.channel),
+      [],
+      "every CONTRACT §1 command is implemented in this build",
+    );
     assert.deepEqual(receipt.anchors, { total: 0, cited: 0 });
   } finally {
     rmSync(home, { recursive: true, force: true });

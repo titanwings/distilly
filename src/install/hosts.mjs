@@ -142,6 +142,7 @@ export function installRepoSkill({
   force = false,
   dryRun = false,
   backup = false,
+  report = {},
 }) {
   if (!existsSync(join(source, "SKILL.md"))) {
     throw new Error(`source does not look like a skill repo: ${source}`);
@@ -159,6 +160,9 @@ export function installRepoSkill({
     if (backup) {
       backupPath = backupPathFor(destination);
       renameSync(destination, backupPath);
+      // The destination is the return value (callers compare it directly), so
+      // where the previous copy went is reported through `report`.
+      report.backupPath = backupPath;
     } else {
       rmSync(destination, { recursive: true, force: true });
     }
@@ -169,7 +173,7 @@ export function installRepoSkill({
     recursive: true,
     filter: (sourcePath) => !shouldIgnore(basename(sourcePath)),
   });
-  return { destination, backupPath };
+  return destination;
 }
 
 /**

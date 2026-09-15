@@ -138,6 +138,11 @@ const installCommand = {
     const report = {};
     let destination = target;
     try {
+      // `installRepoSkill` returns the destination *string* and reports where the
+      // previous copy went through `report`. Reading `.destination`/`.backupPath`
+      // off the return value put a plain object into every later path operation —
+      // `displayPath` threw `paths[0] must be of type string`, so the first
+      // `install --path` failed after it had already copied the payload.
       destination = installRepoSkill({
         source: ctx.packageRoot,
         destination: target,
@@ -170,8 +175,11 @@ const installCommand = {
         ...createReceipt("install", {
           outputs: skillFile ? [skillFile] : [],
           warnings: report.backupPath ? [`previous install preserved at ${displayPath(report.backupPath)}`] : [],
+          // `install --path` has no host: every host is then "not the selected
+          // one". Resolving an empty host id threw instead — the receipt-building
+          // step crashed after a successful copy.
           unavailable: listAgents()
-            .filter((id) => id !== resolveHostId(host ?? ""))
+            .filter((id) => (host ? id !== resolveHostId(host) : true))
             .map((id) => ({ channel: id, reason: "not the selected host" })),
         }),
         host: host ?? null,
