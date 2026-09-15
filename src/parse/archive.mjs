@@ -1154,7 +1154,7 @@ const EXTRACTORS = {
  * point usable without every caller re-implementing the walk.
  */
 function archiveMembersFrom(input, options = {}) {
-  if (Array.isArray(input)) return input;
+  if (Array.isArray(input)) return { members: input, warnings: [] };
   if (typeof input === "string") {
     const target = resolve(input);
     const stats = statSync(target);
@@ -1169,20 +1169,37 @@ function archiveMembersFrom(input, options = {}) {
         }
       };
       walk(target);
-      return directoryArchive(files, { ...options, archiveName: options.archiveName ?? basename(target) });
+      return { members: directoryArchive(files, { ...options, archiveName: options.archiveName ?? basename(target) }), warnings: [] };
     }
     return readArchiveMembers(readFileSync(target), { ...options, archiveName: options.archiveName ?? basename(target) });
+  }
+  // Raw container bytes: an `ArrayBuffer`, a `Buffer` or any `Uint8Array`. The
+  // tests and `harvest` hand the payload over this way, so it must not fall
+  // through to the empty-member error.
+  if (input instanceof ArrayBuffer || ArrayBuffer.isView(input)) {
+    return readArchiveMembers(input, options);
   }
   // A SourceFile (or anything with bytes): read it as a container.
   const bytes = input?.bytes ?? input?.raw ?? null;
   if (bytes !== null) return readArchiveMembers(bytes, options);
-  return [];
+  return { members: [], warnings: [] };
 }
 
 export function parseArchive(input, options = {}) {
-  const members = archiveMembersFrom(input, options);
+  const { members, warnings: memberWarnings } = archiveMembersFrom(input, options);
   if (members.length === 0) {
     throw new InputError("an archive needs at least one member");
+  }
+
+  // Nothing here is even claimable by a reader, so "unknown archive layout" would
+  // misdescribe it: the container is understood, it simply carries no text.
+  // Saying so — and naming how many members were seen — is the actionable fix.
+  const claimable = members.filter((member) => {
+    const parser = classifyMember(member.archivePath).parser;
+    return Boolean(parser) && parser !== "unsupported";
+  });
+  if (claimable.length === 0) {
+    throw new Error(`no member produced readable text (${members.length} member(s) seen)`);
   }
   const detected = options.type
     ? { type: options.type, reasons: ["type supplied by the caller"], confidence: "asserted" }
@@ -1199,16 +1216,47 @@ export function parseArchive(input, options = {}) {
     result.warnings.push(`the archive produced ${result.documents.length} documents; only the first ${documents.length} were kept`);
   }
 
-  // A member that no document used is either a support file or something we did
-  // not understand. Either way it is named, because an archive that quietly
-  // ignores half its members is not evidence.
+  // An archive whose members were all recognised but yielded no text is not a
+  // successful harvest with warnings — it is a refusal. The callers (`harvest`,
+  // `parse-archive`) turn this into a loud per-file failure; recording an empty
+  // document instead would put a person in the ledger with nothing behind it.
+  const readable = documents.some(
+    (document) =>
+      (document.content ?? "").trim().length > 0 ||
+      (document.entries ?? []).some((entry) => (entry.text ?? "").trim().length > 0),
+  );
+  // A member the archive's own extractor did not claim may still be readable by
+  // the parser that owns its extension (a `Takeout/Mail/*.mbox` inside an X
+  // archive, a `Connections.csv`, a subtitle sidecar). Route those before
+  // deciding anything is unrecognised: an archive that quietly drops a readable
+  // member is not evidence.
   const used = new Set(documents.flatMap((document) => (document.files ?? []).map((file) => file.name)));
+  const supportMember = /(^|\/)(metadata\.json|archive_browser\.html|README\.txt|channels\.json|users\.json|account\.js|account\.json|group_info\.json)$/i;
+  const routed = [];
   const skipped = [];
   for (const member of members) {
     if (used.has(member.name)) continue;
-    if (/(^|\/)(metadata\.json|archive_browser\.html|README\.txt|channels\.json|users\.json|account\.js|account\.json|group_info\.json)$/i.test(member.archivePath)) continue;
+    if (supportMember.test(member.archivePath)) continue;
     if (/\/$/.test(member.archivePath)) continue;
+    const parser = memberParser(member);
+    if (parser && parser !== "chat" && parser !== "html" && parser !== "feishu-text") {
+      try {
+        const document = parseMemberWith(parser, member, { ...options, archiveType: detected.type });
+        if (document) {
+          routed.push(...[].concat(document));
+          continue;
+        }
+      } catch (error) {
+        skipped.push({ member: member.archivePath, why: `the ${parser} reader refused it: ${error.message}` });
+        continue;
+      }
+    }
     skipped.push({ member: member.archivePath, why: "no extractor in this archive type claimed this member" });
+  }
+  documents.push(...routed);
+
+  if (!readable && !documents.some((document) => (document.entries ?? []).some((entry) => (entry.text ?? "").trim().length > 0))) {
+    throw new Error(`${detected.type}: no member produced readable text (${members.length} member(s) seen)`);
   }
 
   return {
@@ -1220,6 +1268,7 @@ export function parseArchive(input, options = {}) {
     // because `harvest` records one ledger entry per sub-source.
     entries: documents.flatMap((document) => document.entries ?? []),
     warnings: [
+      ...(memberWarnings ?? []),
       ...(result.warnings ?? []),
       ...skipped.map((entry) => ({
         code: "archive/unsupported-member",
@@ -1243,6 +1292,73 @@ export function memberParser(member) {
   if (/\.csv$/.test(lower)) return "csv";
   if (/\.html?$/.test(lower)) return "html";
   if (/\.(txt|md)$/.test(lower)) return "feishu-text";
+  return null;
+}
+
+/**
+ * Read one archive member with the parser that owns its extension.
+ *
+ * Used for members an archive's own extractor did not claim, so an X export that
+ * happens to carry `Takeout/Mail/*.mbox` still reaches the email reader. Returns
+ * `null` when the parser does not apply, and throws when it applies but refuses.
+ *
+ * @returns {object|object[]|null}
+ */
+function parseMemberWith(parser, member, options = {}) {
+  const source = member instanceof SourceFile ? member : new SourceFile({ path: member.path, raw: member.raw ?? member.bytes });
+  const decorate = (document, dataset) => ({
+    ...document,
+    parser: "archive",
+    method: "archive-member",
+    source: options.source ?? "archive",
+    origin: member.origin,
+    meta: { ...document.meta, archiveType: options.archiveType ?? null, dataset },
+  });
+
+  if (parser === "email") {
+    return decorate(parseEmail(source, { format: /\.mbox$/i.test(member.archivePath) ? "mbox" : undefined }), "mail");
+  }
+  if (parser === "subtitle") return decorate(parseSubtitle(source), "subtitles");
+
+  if (parser === "csv") {
+    const { rows, header, warnings } = readCsvTable(member.text ?? source.text ?? "");
+    if (header.length === 0) return null;
+    const records = rows
+      .map((row) => {
+        const parts = header
+          .map((column, index) => {
+            const value = row.cells[index] ?? "";
+            // `column=value` is the archive-member convention (a spreadsheet row
+            // is a set of assignments); the LinkedIn extractor keeps its own
+            // `column: value` rendering because its tests pin that shape.
+            return value === "" ? null : `${column}=${value}`;
+          })
+          .filter(Boolean);
+        if (parts.length === 0) return null;
+        return {
+          kind: "item",
+          text: parts.join("\n"),
+          label: `${basename(member.archivePath)} row ${row.index + 1}`,
+          byteStart: row.byteStart,
+          byteEnd: row.byteEnd,
+        };
+      })
+      .filter(Boolean);
+    if (records.length === 0) return null;
+    return decorate(
+      buildDocument({
+        files: [source],
+        records,
+        parser: "archive",
+        kind: "archive-record",
+        method: "archive-member",
+        source: options.source ?? "archive",
+        origin: member.origin,
+        warnings,
+      }),
+      "csv",
+    );
+  }
   return null;
 }
 
