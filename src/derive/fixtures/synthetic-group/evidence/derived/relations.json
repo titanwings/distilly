@@ -1,0 +1,147 @@
+{
+  "claims": [
+    {
+      "confidence": "high",
+      "evidence": [
+        "k0001:t2",
+        "k0001:t3",
+        "k0001:t4",
+        "k0001:t5",
+        "k0001:t6",
+        "k0001:t7",
+        "k0001:t8",
+        "k0001:t9"
+      ],
+      "id": "relations.reply_counts",
+      "label": {
+        "en": "Reply counts",
+        "zh": "回应频次"
+      },
+      "value": {
+        "pairs": [
+          {
+            "asymmetry": 0.5135,
+            "from": "小陈",
+            "replies": 19,
+            "reverse_replies": 18,
+            "to": "林工"
+          },
+          {
+            "asymmetry": 0.2,
+            "from": "小陈",
+            "replies": 1,
+            "reverse_replies": 4,
+            "to": "老周"
+          },
+          {
+            "asymmetry": 0.6667,
+            "from": "小陈",
+            "replies": 2,
+            "reverse_replies": 1,
+            "to": "阿May"
+          },
+          {
+            "asymmetry": 0.4865,
+            "from": "林工",
+            "replies": 18,
+            "reverse_replies": 19,
+            "to": "小陈"
+          },
+          {
+            "asymmetry": 0.625,
+            "from": "林工",
+            "replies": 5,
+            "reverse_replies": 3,
+            "to": "老周"
+          },
+          {
+            "asymmetry": 0.5,
+            "from": "林工",
+            "replies": 4,
+            "reverse_replies": 4,
+            "to": "阿May"
+          },
+          {
+            "asymmetry": 0.8,
+            "from": "老周",
+            "replies": 4,
+            "reverse_replies": 1,
+            "to": "小陈"
+          },
+          {
+            "asymmetry": 0.375,
+            "from": "老周",
+            "replies": 3,
+            "reverse_replies": 5,
+            "to": "林工"
+          },
+          {
+            "asymmetry": 0.3333,
+            "from": "阿May",
+            "replies": 1,
+            "reverse_replies": 2,
+            "to": "小陈"
+          },
+          {
+            "asymmetry": 0.5,
+            "from": "阿May",
+            "replies": 4,
+            "reverse_replies": 4,
+            "to": "林工"
+          },
+          {
+            "asymmetry": 1,
+            "from": "阿May",
+            "replies": 1,
+            "reverse_replies": 0,
+            "to": "老周"
+          }
+        ]
+      }
+    },
+    {
+      "confidence": "low",
+      "evidence": [
+        "k0002:t1",
+        "k0002:t5",
+        "k0002:t7",
+        "k0002:t10",
+        "k0002:t14",
+        "k0002:t16",
+        "k0002:t22"
+      ],
+      "id": "relations.address_shift.1",
+      "label": {
+        "en": "Address shift: 林工 → 林哥",
+        "zh": "称呼变化：林工 → 林哥"
+      },
+      "value": {
+        "after": 3,
+        "before": 4,
+        "file": "knowledge/text/dm-lin-chen.md",
+        "from": "林工",
+        "to": "林哥"
+      }
+    }
+  ],
+  "generated_from": [
+    {
+      "path": "knowledge/index.json",
+      "sha256": "ad3e9c11b280acdc1d917be2b9e62ffc27293cb53d6a1c76b00f0b5eb5605b88"
+    },
+    {
+      "path": "knowledge/text/dm-lin-chen.md",
+      "sha256": "8804b43b5e6d08a0f1e12d10468218396440d7acdd7e1f1dafa7bcc9c30e0786"
+    },
+    {
+      "path": "knowledge/text/group-chat.md",
+      "sha256": "cafe7e613c17dca21f4bec05ecb61aacb4626f30e4e675e5560681f6cbad2c33"
+    },
+    {
+      "path": "knowledge/text/incident-postmortem.md",
+      "sha256": "378da8f92728ed27ebf151f68a9bbee1bc9c405da431d6cd458d96ea806b0e4d"
+    }
+  ],
+  "kind": "relations",
+  "notes": []
+}

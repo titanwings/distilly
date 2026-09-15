@@ -1,0 +1,102 @@
+{
+  "claims": [
+    {
+      "confidence": "medium",
+      "evidence": [
+        "k0001:t15",
+        "k0001:t16",
+        "k0001:t17",
+        "k0001:t18",
+        "k0001:t19",
+        "k0001:t20"
+      ],
+      "id": "shifts.candidate.1",
+      "label": {
+        "en": "Shift candidate 1 (message length)",
+        "zh": "突变候选 1（消息长度）"
+      },
+      "value": {
+        "absolute_change": 19.75,
+        "after": 33.3333,
+        "at": "k0001:t18",
+        "at_time": "2024-03-08T10:20:00.000Z",
+        "before": 13.5833,
+        "metric": "mean_chars",
+        "mixes_speakers": true,
+        "pooled": true,
+        "relative_change": 1.454,
+        "speakers_after": [
+          "小陈",
+          "林工",
+          "老周",
+          "阿May"
+        ],
+        "speakers_before": [
+          "小陈",
+          "林工",
+          "老周",
+          "阿May"
+        ],
+        "window": 12
+      }
+    },
+    {
+      "confidence": "medium",
+      "evidence": [
+        "k0001:t34",
+        "k0002:t1",
+        "k0002:t2",
+        "k0002:t3",
+        "k0002:t4",
+        "k0003"
+      ],
+      "id": "shifts.candidate.2",
+      "label": {
+        "en": "Shift candidate 2 (message length)",
+        "zh": "突变候选 2（消息长度）"
+      },
+      "value": {
+        "absolute_change": 27.5,
+        "after": 12.0833,
+        "at": "k0002:t2",
+        "at_time": "2024-03-14T19:05:00.000Z",
+        "before": 39.5833,
+        "metric": "mean_chars",
+        "mixes_speakers": true,
+        "pooled": true,
+        "relative_change": 0.6947,
+        "speakers_after": [
+          "林工",
+          "小陈"
+        ],
+        "speakers_before": [
+          "林工",
+          "阿May",
+          "老周",
+          "小陈"
+        ],
+        "window": 12
+      }
+    }
+  ],
+  "generated_from": [
+    {
+      "path": "knowledge/index.json",
+      "sha256": "ad3e9c11b280acdc1d917be2b9e62ffc27293cb53d6a1c76b00f0b5eb5605b88"
+    },
+    {
+      "path": "knowledge/text/dm-lin-chen.md",
+      "sha256": "8804b43b5e6d08a0f1e12d10468218396440d7acdd7e1f1dafa7bcc9c30e0786"
+    },
+    {
+      "path": "knowledge/text/group-chat.md",
+      "sha256": "cafe7e613c17dca21f4bec05ecb61aacb4626f30e4e675e5560681f6cbad2c33"
+    },
+    {
+      "path": "knowledge/text/incident-postmortem.md",
+      "sha256": "378da8f92728ed27ebf151f68a9bbee1bc9c405da431d6cd458d96ea806b0e4d"
+    }
+  ],
+  "kind": "shifts",
+  "notes": []
+}

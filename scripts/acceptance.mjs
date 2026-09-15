@@ -16,6 +16,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+import { baselineSections, buildView } from './blind-test.mjs';
+
 const root = path.resolve(here, '..');
 const arg = (name, fallback) => {
   const i = process.argv.indexOf(`--${name}`);
@@ -117,13 +119,43 @@ try {
   }
   record('派生结论里的锚点全部可回指', dangling === 0, dangling ? `${dangling} 个悬空锚点` : '0 悬空');
 
-  // 3. view check / render（用记录下来的 view 模板，锚点按序解析）
-  const templatePath = path.join(corpus, 'expected', 'view.template.json');
-  const template = await readFile(templatePath, 'utf8');
-  const resolved = template.replace(/\{\{ANCHOR:(\d+)\}\}/g, (_, n) => anchors[Number(n) - 1] ?? anchors[0]);
+  // 3. view check / render。
+  //
+  // 以前这里读 `expected/view.template.json` 再按序替换 `{{ANCHOR:n}}`。那份模板是
+  // **契约之前**的形状（sections 叫 voice/work/relations，只有 6 段且顺序与契约不符），
+  // 于是 `view check` 必然失败。改成用 `scripts/blind-test.mjs` 里那套已有的
+  // 「按派生结论机械填段」的构造器：形状由 `REQUIRED_SECTIONS` 保证，引用的是真实锚点，
+  // 派生不出来的段记成缺口而不是编造。
+  const derived = {};
+  for (const name of await (await import('node:fs/promises')).readdir(derivedDir)) {
+    derived[name.replace(/\.json$/, '')] = JSON.parse(await readFile(path.join(derivedDir, name), 'utf8'));
+  }
+  const anchorIndex = new Map();
+  for (const entry of ledger2) {
+    const raw = entry.locations?.raw ?? null;
+    for (const anchor of entry.anchors ?? []) {
+      const id = typeof anchor === 'string' ? anchor : anchor.id;
+      const base = id.split(':')[0];
+      const detail = (entry.anchor_detail ?? []).find((d) => (d.anchor ?? d.id) === id) ?? {};
+      if (!anchorIndex.has(base)) {
+        anchorIndex.set(base, {
+          id: base,
+          anchor: base,
+          source: entry.source ?? entry.origin ?? '',
+          kind: entry.kind ?? 'message',
+          path: raw ?? entry.locations?.text ?? '',
+        });
+      }
+      void detail;
+    }
+  }
+  const baseline = baselineSections({ claims: derived, anchors: anchorIndex });
+  const view = buildView({ slug: person, sections: baseline.sections, evidence: baseline.evidence });
   const viewsDir = path.join(personDir, 'views');
   await mkdir(viewsDir, { recursive: true });
-  await writeFile(path.join(viewsDir, `${person}.view.json`), resolved, 'utf8');
+  await writeFile(path.join(viewsDir, `${person}.view.json`), `${JSON.stringify(view, null, 2)}\n`, 'utf8');
+  record('view 由派生证据机械构造', baseline.sections.length >= 7 && baseline.cited > 0,
+    `${baseline.sections.length} 段 / ${baseline.cited} 个锚点 / 缺口 ${baseline.gaps.length}`);
 
   const check = distilly(['view', 'check', '--person', person, '--json']);
   record('view check 通过', check.status === 0, check.stderr.slice(0, 160));

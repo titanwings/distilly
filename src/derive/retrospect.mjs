@@ -33,6 +33,14 @@
  * `<file>` id and ids never carry a timestamp or a random component.
  */
 
+import {
+  deriveBoundaries,
+  deriveConflicts,
+  deriveRelations,
+  deriveShifts,
+  deriveTimeline,
+  deriveVoice,
+} from "./dimensions.mjs";
 import { createHash } from "node:crypto";
 import {
   existsSync,
@@ -696,8 +704,60 @@ export function deriveStats(corpus) {
 // document assembly
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// additional dimensions
+// ---------------------------------------------------------------------------
+
+/**
+ * The six dimensions that live in their own module: `voice`, `relations`,
+ * `timeline`, `boundaries`, `shifts`, `conflicts`.
+ *
+ * They are handed this file's private helpers (claim construction, thresholds)
+ * rather than re-deriving them, so every dimension measures and cites the same
+ * way `stats` does — and a threshold change stays in one place.
+ */
+const DIMENSION_HELPERS = {
+  makeClaim,
+  note,
+  MIN: MIN_UNITS,
+  SHIFT_WINDOW_RATIO,
+  SHIFT_WINDOW_MIN,
+  SHIFT_WINDOW_MAX,
+  SHIFT_RELATIVE,
+  SHIFT_ABSOLUTE,
+};
+
+// 不叫 run：本文件已经导出了一个同名的 CLI 入口函数。
+//
+// 低于全局下限时统一短路：语料太薄，**每个**维度都无话可说，此时报各自的
+// 分维度阈值（"少于 10 句"）虽然不假却会误导 —— 读者需要的是那个解释"为什么
+// 一条结论都没有"的数字。
+const withHelpers = (deriver) => (corpus) => {
+  const floor = MIN_UNITS.any;
+  if (corpus.units.length < floor) {
+    return {
+      claims: [],
+      notes: [
+        // 拼接而不是模板字符串：这段代码本身住在一个模板字符串里，
+        // 写成插值会被**补丁文件**在写入时求值（那时 corpus 还不存在）。
+        note(
+          "样本不足：只有 " + corpus.units.length + " 条可引用消息，低于所有维度的最低样本数 " + floor + "，未产出任何结论。",
+          "Insufficient sample: only " + corpus.units.length + " citable messages, below the minimum of " + floor + " for every dimension, so no claim was produced.",
+        ),
+      ],
+    };
+  }
+  return deriver(corpus, DIMENSION_HELPERS);
+};
+
 const DERIVERS = {
   stats: deriveStats,
+  voice: withHelpers(deriveVoice),
+  relations: withHelpers(deriveRelations),
+  timeline: withHelpers(deriveTimeline),
+  boundaries: withHelpers(deriveBoundaries),
+  shifts: withHelpers(deriveShifts),
+  conflicts: withHelpers(deriveConflicts),
 };
 
 /** Run every available dimension and assemble the seven documents. */

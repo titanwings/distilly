@@ -1,0 +1,70 @@
+{
+  "claims": [
+    {
+      "confidence": "low",
+      "evidence": [
+        "k0001:t18",
+        "k0001:t19"
+      ],
+      "id": "boundaries.candidate.0001",
+      "label": {
+        "en": "Deflection candidate 1 (R1_topic_deflection)",
+        "zh": "回避候选 1（R1_topic_deflection）"
+      },
+      "value": {
+        "deflection": [
+          "先不说"
+        ],
+        "excerpt": "嗯，先不说这个，把灰度方案过一遍。",
+        "probe": "k0001:t18",
+        "rules": [
+          "R1_topic_deflection"
+        ],
+        "speaker": "林工"
+      }
+    },
+    {
+      "confidence": "low",
+      "evidence": [
+        "k0001:t31",
+        "k0001:t32"
+      ],
+      "id": "boundaries.candidate.0002",
+      "label": {
+        "en": "Deflection candidate 2 (R1_topic_deflection)",
+        "zh": "回避候选 2（R1_topic_deflection）"
+      },
+      "value": {
+        "deflection": [
+          "这个不方便说"
+        ],
+        "excerpt": "这个不方便说，先聊排期。",
+        "probe": "k0001:t31",
+        "rules": [
+          "R1_topic_deflection"
+        ],
+        "speaker": "林工"
+      }
+    }
+  ],
+  "generated_from": [
+    {
+      "path": "knowledge/index.json",
+      "sha256": "ad3e9c11b280acdc1d917be2b9e62ffc27293cb53d6a1c76b00f0b5eb5605b88"
+    },
+    {
+      "path": "knowledge/text/dm-lin-chen.md",
+      "sha256": "8804b43b5e6d08a0f1e12d10468218396440d7acdd7e1f1dafa7bcc9c30e0786"
+    },
+    {
+      "path": "knowledge/text/group-chat.md",
+      "sha256": "cafe7e613c17dca21f4bec05ecb61aacb4626f30e4e675e5560681f6cbad2c33"
+    },
+    {
+      "path": "knowledge/text/incident-postmortem.md",
+      "sha256": "378da8f92728ed27ebf151f68a9bbee1bc9c405da431d6cd458d96ea806b0e4d"
+    }
+  ],
+  "kind": "boundaries",
+  "notes": []
+}

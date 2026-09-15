@@ -209,7 +209,22 @@ export function renderHelp({ version, binary = "distilly" } = {}) {
 
 /** Usage string for one command, built from its registered options. */
 export function renderCommandHelp(command, { binary = "distilly" } = {}) {
-  return `${command.usage.replace(/^distilly/, binary)}\n\n${command.help ?? ""}`.trimEnd();
+  // Three shapes live in this tree, and all three must render:
+  //   help: "…"            a plain string
+  //   help: { zh, en }     the pair, kept under one key
+  //   ...{ zh, en }        the pair *spread*, which is what the registry convention
+  //                        actually produces — `command.help` is undefined here,
+  //                        which is why every --help used to print one line
+  let body = "";
+  if (typeof command.help === "string") {
+    body = command.help;
+  } else if (command.help && typeof command.help === "object") {
+    body = [command.help.zh, command.help.en].filter((part) => typeof part === "string" && part !== "").join("\n\n---\n\n");
+  } else if (typeof command.zh === "string" || typeof command.en === "string") {
+    body = [command.zh, command.en].filter((part) => typeof part === "string" && part !== "").join("\n\n---\n\n");
+  }
+  const head = command.usage.replace(/^distilly/, binary);
+  return (body === "" ? head : `${head}\n\n${body}`).trimEnd();
 }
 
 /* ------------------------------------------------------------------ */

@@ -26,6 +26,7 @@
  * are reported as gaps rather than padded with invented content.
  */
 
+import { isEntryPoint } from "../src/cli/entry.mjs";
 import { spawnSync } from "node:child_process";
 import { cpSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
@@ -153,7 +154,7 @@ function itemFromClaim(claim, anchors) {
  * the derivation could not support (a dated timeline over a corpus without
  * timestamps, say) is reported as a gap, never invented.
  */
-function baselineSections({ claims, anchors }) {
+export function baselineSections({ claims, anchors }) {
   const sections = [];
   const gaps = [];
   const byId = new Map();
@@ -232,7 +233,7 @@ function baselineSections({ claims, anchors }) {
   return { sections, gaps, evidence, cited: cited.size };
 }
 
-function buildView({ slug, sections, evidence }) {
+export function buildView({ slug, sections, evidence }) {
   return {
     meta: { slug, title: "沟通与协作画像（派生证据版）", lang: "zh-CN", theme: "auto" },
     sections,
@@ -515,7 +516,14 @@ function score() {
 }
 
 const [, , command] = process.argv;
-if (command === "prepare") prepare();
+// Collected by `node --test` because the filename matches its `*-test.mjs` pattern:
+// it is a CLI, not a suite, so declare nothing and leave quietly.
+const collectedByRunner = Boolean(process.env.NODE_TEST_CONTEXT) && command === undefined;
+if (collectedByRunner) {
+  // deliberately empty
+} else if (!isEntryPoint(import.meta.url)) {
+  // imported for its helpers (`acceptance.mjs` does this): nothing to run
+} else if (command === "prepare") prepare();
 else if (command === "finalize") finalize();
 else if (command === "control") control();
 else if (command === "score") score();
