@@ -36,7 +36,22 @@ function sandbox() {
   const root = mkdtempSync(join(tmpdir(), "dst-mcp-"));
   const home = join(root, "distilly");
   mkdirSync(home, { recursive: true });
-  return { root, home, work: join(root, "work"), config: { app_id: "cli_x", app_secret: SECRET } };
+  const config = { app_id: "cli_x", app_secret: SECRET };
+  // An **isolated home with the credential written into it**, plus the env that
+  // points at it. Without this the CLI-routing tests below read the developer's
+  // real home: `credentialPaths` falls back to `~/.colleague-skill/<file>`, this
+  // machine still has that pre-rename directory, and the run found a credential
+  // there. Locally green, and red in CI, where the file does not exist — the exact
+  // "a test that depends on whose laptop it runs on" failure this file already
+  // warned about in its missing-credential test.
+  writeFileSync(join(home, "feishu_config.json"), JSON.stringify(config, null, 2));
+  return {
+    root,
+    home,
+    work: join(root, "work"),
+    config,
+    env: { DISTILLY_HOME: home, HOME: home },
+  };
 }
 
 /** An MCP transport that answers from a script and records every call. */
@@ -200,13 +215,17 @@ test("cli: --mode mcp routes to the MCP client and needs a target", async () => 
 
   const box = sandbox();
   const transport = fakeTransport({ result: [{ type: "text", text: JSON.stringify({ items: textMessages(3) }) }] });
-  const result = await runCollectCli(["--mode", "mcp", "--chat-id", "oc_demo", "--person", "demo", "--base-dir", box.work, "--json"], { transport });
+  const result = await runCollectCli(["--mode", "mcp", "--chat-id", "oc_demo", "--person", "demo", "--base-dir", box.work, "--json"], {
+    transport,
+    env: box.env,
+  });
   assert.equal(result.ok, true, JSON.stringify(result.receipt));
   assert.equal(transport.calls.length, 1);
   assert.deepEqual(transport.calls[0].args, { chat_id: "oc_demo", page_size: 50 });
   const lines = [];
   const human = await runCollectCli(["--mode", "mcp", "--chat-id", "oc_demo", "--person", "demo", "--base-dir", box.work], {
     transport,
+    env: box.env,
     stdout: (line) => lines.push(line),
     stderr: () => {},
   });
