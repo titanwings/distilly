@@ -17,16 +17,33 @@ import { decodeEntities, readZipMembers, recordsFromCharSpans, buildDocument } f
 /** Extract the text of every `<t>`/`<v>` element inside a fragment. */
 function textOf(fragment) {
   const parts = [];
-  for (const match of fragment.matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>|<v(?:\s[^>]*)?>([\s\S]*?)<\/v>/g)) {
+  // Word writes `<w:t>`, the spreadsheet parts write `<t>`/`<v>`, and a producer
+  // may use any prefix it likes — so the namespace prefix is optional here. A
+  // regex anchored on bare `<t>` matches nothing in a `.docx` and silently
+  // yields "no paragraph text" for a document full of it.
+  const runs = /<(?:[A-Za-z_][\w.-]*:)?t(?:\s[^>]*)?>([\s\S]*?)<\/(?:[A-Za-z_][\w.-]*:)?t>|<(?:[A-Za-z_][\w.-]*:)?v(?:\s[^>]*)?>([\s\S]*?)<\/(?:[A-Za-z_][\w.-]*:)?v>/g;
+  for (const match of fragment.matchAll(runs)) {
     parts.push(decodeEntities(match[1] ?? match[2] ?? "").text);
   }
   return parts.join("");
 }
 
+/**
+ * A zip member as text.
+ *
+ * `readZipMembers` hands back `Uint8Array`, whose `toString()` is
+ * `"60,63,120,…"` — an OOXML part read that way matches no tag at all, which is
+ * how `parseDocx` ended up reporting "no paragraph text" for a perfectly good
+ * document. Everything that reads a member as XML goes through here.
+ */
+function memberText(bytes) {
+  return Buffer.from(bytes).toString("utf8");
+}
+
 function requireMember(members, name, file) {
   const data = members.get(name);
   if (!data) throw new Error(`${file.label} has no ${name}; not a readable OOXML document`);
-  return data.toString("utf8");
+  return memberText(data);
 }
 
 /** Paragraphs of a Word document. */
@@ -63,7 +80,7 @@ export function parseXlsx(file, options = {}) {
   const shared = [];
   const sharedXml = members.get("xl/sharedStrings.xml");
   if (sharedXml) {
-    for (const match of sharedXml.toString("utf8").matchAll(/<si(?:\s[^>]*)?>([\s\S]*?)<\/si>/g)) {
+    for (const match of memberText(sharedXml).matchAll(/<si(?:\s[^>]*)?>([\s\S]*?)<\/si>/g)) {
       shared.push(textOf(match[1]));
     }
   }
@@ -75,7 +92,7 @@ export function parseXlsx(file, options = {}) {
 
   const rows = [];
   for (const sheet of sheets) {
-    const xml = members.get(sheet.name).toString("utf8");
+    const xml = memberText(members.get(sheet.name));
     for (const rowMatch of xml.matchAll(/<row(?:\s[^>]*)?>([\s\S]*?)<\/row>/g)) {
       const cells = [];
       for (const cellMatch of rowMatch[1].matchAll(/<c([^>]*)>([\s\S]*?)<\/c>/g)) {

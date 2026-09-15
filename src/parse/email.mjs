@@ -120,6 +120,24 @@ function walkPart(bytes, headers, out) {
   return out;
 }
 
+/**
+ * Put an 8-bit header value back through UTF-8.
+ *
+ * `parseMessage` reads the message through a latin1 view so that byte offsets and
+ * the mbox `>From` handling stay exact. That is right for the body — which is
+ * decoded per part — but it leaves a raw UTF-8 `Subject:` looking like
+ * `å¯¹è´¦å·®å¼`. Only values that actually carry high bytes are re-decoded, and a
+ * value that is not valid UTF-8 keeps its bytes rather than gaining U+FFFD.
+ */
+function decodeHeaderValue(value) {
+  if (!value || !/[\u0080-\u00ff]/.test(value)) return value;
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(Buffer.from(value, "latin1"));
+  } catch {
+    return value;
+  }
+}
+
 /** One message → `{ headers, from, to, subject, date, body, attachments, warnings }`. */
 export function parseMessage(rawBytes) {
   const bytes = rawBytes instanceof Uint8Array ? rawBytes : new Uint8Array(rawBytes);
@@ -131,7 +149,9 @@ export function parseMessage(rawBytes) {
   const warnings = [];
   let body = collected.plain.join("\n\n").trim();
   if (!body && collected.html.length > 0) {
-    body = decodeEntities(stripHtml(collected.html.join("\n\n"))).trim();
+    // `stripHtml` already decodes entities and collapses whitespace; wrapping it in
+    // another `decodeEntities` fed it an object and produced "[object Object]".
+    body = stripHtml(collected.html.join("\n\n")).text.trim();
     warnings.push({ code: "email/html-only", message: "no text/plain part; the HTML alternative was stripped to text" });
   }
   if (!body) {
@@ -152,10 +172,10 @@ export function parseMessage(rawBytes) {
 
   return {
     headers,
-    from: decodeMimeWords(headers.get("from") ?? "").trim(),
-    to: decodeMimeWords(headers.get("to") ?? "").trim(),
-    cc: decodeMimeWords(headers.get("cc") ?? "").trim(),
-    subject: decodeMimeWords(headers.get("subject") ?? "").trim(),
+    from: decodeMimeWords(decodeHeaderValue(headers.get("from") ?? "")).trim(),
+    to: decodeMimeWords(decodeHeaderValue(headers.get("to") ?? "")).trim(),
+    cc: decodeMimeWords(decodeHeaderValue(headers.get("cc") ?? "")).trim(),
+    subject: decodeMimeWords(decodeHeaderValue(headers.get("subject") ?? "")).trim(),
     date: (headers.get("date") ?? "").trim(),
     message_id: (headers.get("message-id") ?? "").trim(),
     body,

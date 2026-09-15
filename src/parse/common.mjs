@@ -1116,6 +1116,11 @@ export function buildDocument(input) {
     files: files.map((file) => ({ name: file.name, ...file.descriptor() })),
     content: assembled.content,
     ...(identity ? { identity } : {}),
+    // The records the document was assembled from, after speaker canonicalisation
+    // and with their `kind` intact (`email` anchors one `message` per mail). The
+    // ledger works off `entries`; this is what a caller inspecting the parse — and
+    // `tests/parse-email.test.mjs` — reads to see the per-record shape.
+    records: records ?? input.entries ?? [],
     segments: assembled.segments,
     entries: assembled.entries,
     groupBy: input.groupBy ?? (assembled.segments.length > 0 ? "segment" : "blank"),
