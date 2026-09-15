@@ -167,15 +167,28 @@ export function collectBrowser(input = {}) {
 
   const raw = Buffer.isBuffer(bytes) ? bytes : Buffer.from(String(bytes), "utf8");
   const decoded = raw.toString("utf8");
-  const text = looksLikeHtml(decoded) ? stripHtml(decoded).text : decoded;
+  const html = looksLikeHtml(decoded);
+  const text = html ? stripHtml(decoded).text : decoded;
   const name = label ?? `browser-${pageType ?? "page"}-${String(now).slice(0, 10)}`;
-  const file = new SourceFile({ path: `${name}.txt`, name: `${name}.txt`, raw: new Uint8Array(Buffer.from(text, "utf8")) });
+  // The capture is stored **verbatim**: the raw payload is what the host handed
+  // over, not the text we derived from it. Building the `SourceFile` from the
+  // stripped text (as this did) meant the HTML was gone after a run — the one
+  // thing the raw vault exists to prevent — and the anchor offsets pointed into a
+  // file that was never on disk in that form.
+  const file = new SourceFile({
+    path: `${name}${html ? ".html" : ".txt"}`,
+    name: `${name}${html ? ".html" : ".txt"}`,
+    raw: new Uint8Array(raw),
+  });
 
   const spans = [];
   const pattern = /[^\n]+/g;
   let match;
   while ((match = pattern.exec(text)) !== null) {
-    spans.push({ text: match[0], charStart: match.index, charEnd: match.index + match[0].length, kind: "paragraph" });
+    // Paragraph text only: `assembleContent` locates each one inside the raw
+    // payload, so an anchor points at the bytes the host captured. A paragraph the
+    // raw HTML does not contain verbatim keeps a `null` range rather than a guess.
+    spans.push({ text: match[0], kind: "paragraph" });
   }
   const document = buildDocument({
     parser: "feishu-browser",
@@ -186,7 +199,7 @@ export function collectBrowser(input = {}) {
     source: CHANNEL,
     origin: url ?? `${name}.txt`,
     files: [file],
-    records: recordsFromCharSpans(file, spans),
+    records: spans,
     meta: { page_type: pageType, url, producer },
   });
 

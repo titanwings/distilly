@@ -189,9 +189,13 @@ export function verify(token, options = {}) {
   const wanted = scope ? assertScope(scope) : null;
   const remediation = (target) => {
     const cmd = `distilly consent grant --scope ${target}`;
+    // The scope names the channel (`collect:<channel>:browser`), so the follow-up
+    // command can too. Hardcoding `collect x` told a Feishu user to run the X
+    // collector — an instruction that fails for a reason unrelated to consent.
+    const channel = /^collect:([a-z0-9-]+):browser$/.exec(String(target))?.[1] ?? "x";
     return [
       `run: ${cmd}`,
-      `then pass the printed token: distilly collect x --mode browser --consent <token>`,
+      `then pass the printed token: distilly collect ${channel} --mode browser --consent <token>`,
     ];
   };
 
