@@ -94,13 +94,18 @@ function documentFor(path, sourceLabel, identity = null) {
   if (CHAT_EXTENSIONS.has(extension)) {
     // A Feishu page export is JSON too; ask the Feishu detector before parseChat,
     // which refuses anything it does not recognise by name.
+    // `detectFeishuFormat` answers "not Feishu" with `{format: null, reasons}` —
+    // a non-null *object*. Testing the object for null sent every JSON export to
+    // the Feishu parser, which then refused it by name: a Slack
+    // `messages.json` failed with "not a Feishu export" instead of being read as
+    // Slack. The verdict is `format`, not the wrapper.
     let feishu = null;
     try {
       feishu = detectFeishuFormat(file);
     } catch {
       feishu = null;
     }
-    if (feishu !== null) {
+    if (feishu?.format) {
       return { document: parseFeishu(file, { ...common, method: "user-export" }) };
     }
     // A Slack export keeps its display names in a sibling `users.json`; without it
