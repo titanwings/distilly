@@ -25,7 +25,16 @@
 
 import { CliError } from "../cli/receipt.mjs";
 
-const REGISTRY = new Map();
+/**
+ * Lazily created so the command modules can be imported at the bottom of this
+ * file: they call `register()` while this module body is still being evaluated,
+ * so the map must not depend on a top-level `const` having run yet.
+ */
+var REGISTRY;
+function registry() {
+  if (!REGISTRY) REGISTRY = new Map();
+  return REGISTRY;
+}
 
 /** Commands frozen in CONTRACT §1 whose implementation ships in another branch. */
 export const PLANNED = {
@@ -41,20 +50,21 @@ export const PLANNED = {
  * @param {{summary: string, usage: string, options?: object, run: Function, hidden?: boolean}} definition
  */
 export function register(name, definition) {
-  if (REGISTRY.has(name)) throw new Error(`command already registered: ${name}`);
+  const map = registry();
+  if (map.has(name)) throw new Error(`command already registered: ${name}`);
   if (typeof definition?.run !== "function") {
     throw new Error(`command ${name} needs a run() function`);
   }
-  REGISTRY.set(name, { name, hidden: false, options: {}, ...definition });
+  map.set(name, { name, hidden: false, options: {}, ...definition });
   return definition;
 }
 
 export function lookup(name) {
-  return REGISTRY.get(name) ?? null;
+  return registry().get(name) ?? null;
 }
 
 export function listCommands({ includeHidden = false } = {}) {
-  return [...REGISTRY.values()]
+  return [...registry().values()]
     .filter((command) => includeHidden || !command.hidden)
     .sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -66,9 +76,9 @@ export function listCommands({ includeHidden = false } = {}) {
 export function resolveCommand(tokens) {
   if (tokens.length >= 2) {
     const twoToken = `${tokens[0]} ${tokens[1]}`;
-    if (REGISTRY.has(twoToken)) return { name: twoToken, rest: tokens.slice(2) };
+    if (registry().has(twoToken)) return { name: twoToken, rest: tokens.slice(2) };
   }
-  if (tokens.length >= 1 && REGISTRY.has(tokens[0])) {
+  if (tokens.length >= 1 && registry().has(tokens[0])) {
     return { name: tokens[0], rest: tokens.slice(1) };
   }
   return { name: tokens[0] ?? null, rest: tokens.slice(1) };
@@ -193,3 +203,23 @@ export function renderHelp({ version, binary = "distilly" } = {}) {
 export function renderCommandHelp(command, { binary = "distilly" } = {}) {
   return `${command.usage.replace(/^distilly/, binary)}\n\n${command.help ?? ""}`.trimEnd();
 }
+
+/* ------------------------------------------------------------------ */
+/* built-in commands                                                   */
+/* ------------------------------------------------------------------ */
+/* Imported for their side effect: each module calls `register()`. They live at
+   the bottom because they import `register` from this file — the lazy REGISTRY
+   above is what makes that cycle safe. */
+import "./credentialed.mjs";
+import "./doctor.mjs";
+import "./harvest.mjs";
+import "./install.mjs";
+import "./legacy.mjs";
+import "./migrate.mjs";
+import "./note.mjs";
+import "./parse-chat.mjs";
+import "./parse-email.mjs";
+import "./parse-subtitle.mjs";
+import "./retrospect.mjs";
+import "./skill.mjs";
+import "./view.mjs";

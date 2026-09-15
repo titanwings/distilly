@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-import { PLANNED, listCommands, resolveCommand } from "../src/commands/index.mjs";
+import { PLANNED, listCommands, missingCommandError, resolveCommand } from "../src/commands/index.mjs";
 
 const projectRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const cli = join(projectRoot, "bin", "distilly.mjs");
@@ -52,18 +52,25 @@ test("an unknown command exits non-zero and is not confused with a planned one",
 });
 
 test("planned commands fail loudly with the owning branch", () => {
-  const result = runCli(["harvest", ".", "--json"]);
-  assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /not implemented/i);
-  const receipt = parseReceipt(result.stdout);
-  assert.equal(receipt.ok, false);
-  assert.equal(receipt.command, "harvest");
-  assert.match(receipt.error.remedy, /ds\/02-parse-zero-cred/);
+  // This started as "harvest is a stub that names ds/02-parse-zero-cred". The
+  // branch is finished, so the assertion moved to what is true now: nothing is
+  // left in PLANNED (CONTRACT §1 is fully implemented here), and the mechanism
+  // that reports a missing command still names a remedy.
+  assert.deepEqual(Object.keys(PLANNED), [], "every CONTRACT §1 command is implemented on this branch");
+
+  const unknown = missingCommandError("definitely-not-a-command");
+  assert.equal(unknown.code, "unknown-command");
+  assert.match(unknown.message, /unknown command/);
+  assert.match(unknown.remedy, /--help/);
+
+  // And the command that used to be planned now actually runs.
+  const result = runCli(["harvest", ".", "--json"], { cwd: join(projectRoot, "tests", "fixtures") });
+  assert.doesNotMatch(result.stderr, /not implemented/i);
 });
 
 test("--json emits a receipt with the contract shape and nothing else on stdout", () => {
   const result = runCli(["skill", "list", "--json"]);
-  assert.notEqual(result.status, 0); // still a stub in this build
+  assert.equal(result.status, 0, result.stderr);
   const receipt = parseReceipt(result.stdout);
   assert.deepEqual(Object.keys(receipt).slice(0, 8), [
     "command",
@@ -78,6 +85,9 @@ test("--json emits a receipt with the contract shape and nothing else on stdout"
   assert.equal(typeof receipt.ok, "boolean");
   assert.ok(Array.isArray(receipt.inputs));
   assert.ok(Array.isArray(receipt.outputs));
+  // stdout is exactly one JSON object: no prose leaked into the machine channel.
+  assert.equal(result.stdout.trim().startsWith("{"), true);
+  assert.equal(result.stdout.trim().endsWith("}"), true);
 });
 
 test("the registry is the single registration point and prefers two-token names", () => {
@@ -91,9 +101,15 @@ test("the registry is the single registration point and prefers two-token names"
     name: "install",
     rest: ["claude-code"],
   });
+  // The map is the mechanism's input, not decoration: every entry must name a
+  // branch, and a planned name must not also be registered. It is empty on this
+  // branch because the whole contract is implemented — that is the assertion.
   for (const [name, branch] of Object.entries(PLANNED)) {
     assert.match(branch, /^ds\/\d\d-/);
-    assert.ok(!names.includes(name), `${name} should not be registered by this branch yet`);
+    assert.ok(!names.includes(name), `${name} should not be registered while still planned`);
+  }
+  for (const implemented of ["harvest", "retrospect", "view check", "collect", "note", "skill migrate"]) {
+    assert.ok(names.includes(implemented), `${implemented} should be registered: ${names.join(", ")}`);
   }
 });
 

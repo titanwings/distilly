@@ -18,22 +18,7 @@ import { fileURLToPath } from "node:url";
 import { ArgError, wantsHelp } from "../src/cli/args.mjs";
 import { isEntryPoint } from "../src/cli/entry.mjs";
 import { CliError, createReceipt, createReporter } from "../src/cli/receipt.mjs";
-// Side-effect imports: each module registers itself. They must come before the
-// registry import so that `REGISTRY` (in index.mjs) exists by the time these
-// modules run — importing them the other way round is a cycle.
-import "../src/commands/credentialed.mjs";
-import "../src/commands/doctor.mjs";
-import "../src/commands/harvest.mjs";
-import "../src/commands/install.mjs";
-import "../src/commands/legacy.mjs";
-import "../src/commands/migrate.mjs";
-import "../src/commands/note.mjs";
-import "../src/commands/parse-chat.mjs";
-import "../src/commands/parse-email.mjs";
-import "../src/commands/parse-subtitle.mjs";
-import "../src/commands/retrospect.mjs";
-import "../src/commands/skill.mjs";
-import "../src/commands/view.mjs";
+// Importing the registry also registers every built-in command module.
 import {
   lookup,
   missingCommandError,
