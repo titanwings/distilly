@@ -574,8 +574,13 @@ test("CLI success path: a fake key never reaches stdout, stderr or the receipt",
   assert.equal(receipt.credential_file, "slack_config.json");
   assert.ok(!JSON.stringify(receipt).includes(SECRET.slack));
   assert.equal(
-    box.exists("knowledge/raw/slack/C0123-p001.json"),
+    box.exists("knowledge/raw/slack/c0123-p001.json"),
     true,
+    // The channel id is `C0123` and the **file name is slugged to `c0123`**
+    // (`writeRaw` runs the name through `slug()`), while the receipt keeps
+    // `channel_id: "C0123"`. This assertion used to read `C0123-p001.json` and
+    // passed on macOS only because APFS compares names case-insensitively; on the
+    // Linux runner it failed while the file sat right there in the listing.
     `the page was not written; receipt=${JSON.stringify(receipt)} stderr=${run.stderr} tree=${written(box.work)}`,
   );
 });
