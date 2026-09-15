@@ -602,6 +602,30 @@ function isBlank(text) {
   return text.replace(/\s+/gu, "") === "";
 }
 
+/**
+ * Sub-anchors for the individual records *inside* one paragraph.
+ *
+ * One paragraph anchor (`[k00NN]`) may cover several source records (chat
+ * messages, subtitle cues, archive leaves). Each of those records keeps its own
+ * anchor as `[k00NN:tM]` *within* the paragraph anchors of the rendered block.
+ *
+ * @param {Array<{kind?: string, text: string, byteStart?: number, byteEnd?: number}>} entries
+ * @param {string} kId ledger id, e.g. "k0007"
+ */
+export function buildSubAnchors(entries, kId) {
+  if (!/^k\d{4}$/.test(kId)) {
+    throw new TypeError(`invalid ledger id for anchors: ${kId}`);
+  }
+  return entries.map((entry, index) => ({
+    kind: entry.kind ?? "item",
+    text: entry.text,
+    anchor: `${kId}:t${index + 1}`,
+    index: index + 1,
+    byteStart: entry.byteStart ?? null,
+    byteEnd: entry.byteEnd ?? null,
+  }));
+}
+
 function hasVisibleCodePoint(text) {
   return /\S/u.test(text);
 }

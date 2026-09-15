@@ -5,7 +5,7 @@
 
   var LABELS = {
     zh: {
-      copied: "已复制 Markdown 摘要（{n} 字符）",
+      copied: "已复制 Markdown 摘要（" + "字符）",
       copyFailed: "复制失败：请手动选择页面内容。",
       downloaded: "已生成 HTML 快照（浏览器下载目录）。",
       downloadFailed: "下载失败：可用「打印 / 导出 PDF」代替。",
@@ -159,7 +159,8 @@
         return;
       }
       Promise.resolve(copyText(markdown)).then(function (ok) {
-        status(ok ? text.copied.replace("{n}", String(markdown.length)) : text.copyFailed);
+        status(ok ? text.copied.replace("(" + "字符）", "(" + markdown.length + " 字符）").replace("{n}", String(markdown.length))
+          : text.copyFailed);
       });
     });
 

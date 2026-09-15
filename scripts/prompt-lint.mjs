@@ -11,7 +11,7 @@
  *   anchor      anchors are [k00NN] / [k00NN:tM]
  *   forbidden   no shell HTTP client, no Python HTTP library usage,
  *               no literal credential assignment, no `sk-` shaped key
- *   deprecated  every tools/ ... .py or .sh reference is marked deprecated nearby
+ *   deprecated  every tools/**\/*.py|sh reference is marked deprecated nearby
  *
  * Usage:
  *   node scripts/prompt-lint.mjs [--root <dir>] [--json]

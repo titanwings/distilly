@@ -26,13 +26,8 @@ jobs:
         run: |
           find bin src scripts tests -name '*.mjs' -print0 | xargs -0 -n1 node --check
 
-      # `npm test`, not a bare `node --test`: Node's default discovery also
-      # matches `scripts/blind-test.mjs` (`**/*-test.mjs`), spawns it as a test
-      # file and records its usage error as a failing test. The script's own
-      # guard makes that invocation harmless now, but the suite is `tests/`, so
-      # the command says so — and this step is the same string as `npm test`.
       - name: Unit tests
-        run: npm test
+        run: node --test
 
       - name: Prompt contract lint
         run: node scripts/prompt-lint.mjs
@@ -45,8 +40,7 @@ jobs:
       - name: Objective audit
         run: node scripts/audit-objective.mjs --skip-acceptance
 
-      # Release hygiene: versions, schema marker, carried directories, gates —
-      # and the packed artifact itself (`npm pack` + run the extracted bin).
+      # Release hygiene: versions, schema marker, carried directories, gates.
       - name: Release check
         run: node scripts/check_release.mjs
 

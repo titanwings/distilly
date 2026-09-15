@@ -389,8 +389,6 @@ export async function transcribe(options = {}) {
         source: input ? basename(input) : basename(capture),
         fetchedAt: now,
       });
-      outputs.push({ path: artifacts.raw.path, sha256: artifacts.raw.sha256, bytes: artifacts.raw.bytes, kind: "raw" });
-      outputs.push({ path: artifacts.text.path, sha256: artifacts.text.sha256, bytes: artifacts.text.bytes, kind: "text" });
       const ledger = appendLedger(knowledgeDir, [
         {
           id: `${COMMAND}:${slug(name)}:text`,
@@ -414,7 +412,10 @@ export async function transcribe(options = {}) {
             ...base,
             ok: true,
             input: input ?? null,
-            outputs,
+            outputs: [
+              { path: artifacts.raw.path, sha256: artifacts.raw.sha256, bytes: artifacts.raw.bytes, kind: "raw" },
+              { path: artifacts.text.path, sha256: artifacts.text.sha256, bytes: artifacts.text.bytes, kind: "text" },
+            ],
             ledger: { path: ledger.path, added: ledger.added, total: ledger.total },
             provenance,
             backend: "host",
@@ -557,8 +558,6 @@ export async function transcribe(options = {}) {
         source: basename(input),
         fetchedAt: now,
       });
-      outputs.push({ path: artifacts.raw.path, sha256: artifacts.raw.sha256, bytes: artifacts.raw.bytes, kind: "raw" });
-      outputs.push({ path: artifacts.text.path, sha256: artifacts.text.sha256, bytes: artifacts.text.bytes, kind: "text" });
       const ledger = appendLedger(knowledgeDir, [
         {
           id: `${COMMAND}:${slug(name)}:text`,
@@ -586,7 +585,10 @@ export async function transcribe(options = {}) {
             ...base,
             ok: true,
             input,
-            outputs,
+            outputs: [
+              { path: artifacts.raw.path, sha256: artifacts.raw.sha256, bytes: artifacts.raw.bytes, kind: "raw" },
+              { path: artifacts.text.path, sha256: artifacts.text.sha256, bytes: artifacts.text.bytes, kind: "text" },
+            ],
             ledger: { path: ledger.path, added: ledger.added, total: ledger.total },
             provenance,
             backend: "openai-http",
