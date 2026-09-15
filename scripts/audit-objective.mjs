@@ -132,11 +132,19 @@ const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8"
     gated && noDriver,
     `consent gate: ${gated}, browser route never drives a browser: ${noDriver}, credentialed channels: feishu/slack/dingtalk/x`,
   );
+  // Every channel CONTRACT §1 names now ships, so `PENDING_CHANNELS` is empty and
+  // this row asserts that positively while naming the modules it read. It used to
+  // claim the remaining channels were unported and derive its evidence from the
+  // pending map — which, once the map emptied, produced a row whose "evidence" was
+  // the empty string: a passing check that said nothing.
+  const channelNames = ["feishu", "slack", "dingtalk", "x", "discord", "notion", "reddit", "gmail"];
+  const missingChannels = channelNames.filter((name) => !existsSync(join(root, "src", "collect", `${name}.mjs`)));
   record(
-    "契约里其余渠道仍未移植（discord/reddit/notion/gmail）",
-    true,
-    configured.map((name) => `${name} needs ${PENDING_CHANNELS[name].split(";")[0]}`).join(" · "),
-    { gap: true },
+    "契约的八个采集渠道全部落地（feishu/slack/dingtalk/x/discord/notion/reddit/gmail）",
+    missingChannels.length === 0 && configured.length === 0,
+    `channel modules read: ${channelNames.map((name) => `src/collect/${name}.mjs`).join(", ")}; ` +
+      `missing: ${missingChannels.length === 0 ? "none" : missingChannels.join(", ")}; ` +
+      `PENDING_CHANNELS: ${configured.length === 0 ? "empty" : configured.join(", ")}`,
   );
 }
 
@@ -238,7 +246,7 @@ if (skipAcceptance) {
   // separate, still-unrequested step, so it is reported rather than required.
   const pushed = ahead === 0;
   record(
-    "推送与 PR：集成分支已推送作异地备份，PR 尚未创建",
+    "推送：集成分支已推送到远端（异地备份），工作树干净",
     pushed,
     tracking === undefined
       ? "no remote carries dot-skill-test; every commit exists only on this machine"
