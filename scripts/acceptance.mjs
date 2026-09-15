@@ -9,6 +9,7 @@
  *   node scripts/acceptance.mjs [--corpus <dir>] [--person <slug>] [--keep] [--evidence <dir>]
  */
 import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
@@ -17,6 +18,7 @@ import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 import { baselineSections, buildView } from './blind-test.mjs';
+import { REQUIRED_ARTIFACTS, inspectSkillArtifacts } from './skill-artifacts.mjs';
 
 const root = path.resolve(here, '..');
 const arg = (name, fallback) => {
@@ -61,6 +63,97 @@ function parseReceipt(out) {
   } catch {
     return null;
   }
+}
+
+/**
+ * A mechanical Distill: the `work.md` + `persona.md` the acceptance run feeds to
+ * `skill create`.
+ *
+ * Acceptance cannot call a model, so the *content* is a fixture — but it is built
+ * from the corpus's own units, each quoted with its anchor, so the artifact cites
+ * real evidence instead of placeholders. The rows that use it check the part the
+ * mechanical layer owns:
+ *
+ *  - `skill create` writes the documented artifact set;
+ *  - the persona carries the Layer 0–5 structure `prompts/persona_builder.md` defines.
+ *    Nothing checked this before, and the failure mode was real: a Skill whose
+ *    Operating Rules promised "Layer 0 always wins" while its PART B contained no
+ *    Layer 0 at all passed every gate, because nothing looked;
+ *  - every anchor the artifact cites resolves in the ledger.
+ *
+ * Distillation *quality* is not this function's business — that is the effect layer
+ * (`scripts/blind-test.mjs`) and it needs a judge, not a fixture.
+ */
+function distillFixture({ units, displayName }) {
+  if (units.length === 0) throw new Error('交付物夹具需要至少一个锚点：knowledge/text 里没有段落锚点');
+  const at = (index) => units[index % units.length];
+  const line = (index) => {
+    const unit = at(index);
+    return `- ${unit.text.slice(0, 60)} [${unit.anchor}]`;
+  };
+  const short = (text) => (text.length > 24 ? `${text.slice(0, 24)}…` : text);
+
+  const work = [
+    '# Work（交付物夹具）',
+    '',
+    '> 由 scripts/acceptance.mjs 机械生成：每条都引用语料原文与锚点，用于验证 writer 与结构判据，不代表蒸馏质量。',
+    '',
+    '## 负责范围',
+    line(0),
+    line(1),
+    '',
+    '## 工作流程',
+    line(2),
+    line(3),
+    '',
+    '## 输出偏好',
+    line(4),
+    '',
+    '## 经验知识',
+    line(5),
+    line(6),
+    '',
+  ].join('\n');
+
+  const layer0 = ['## Layer 0：核心性格（最高优先级，任何情况下不得违背）'];
+  for (const index of [0, 1]) {
+    const unit = at(index);
+    layer0.push(`- 当讨论到「${short(unit.text)}」时 → 以原文为准，不改写、不补充 [${unit.anchor}]`);
+  }
+  layer0.push('');
+
+  const persona = [
+    `# ${displayName} — Persona（交付物夹具）`,
+    '',
+    ...layer0,
+    '## Layer 1：身份',
+    line(2),
+    '',
+    '## Layer 2：表达风格',
+    line(3),
+    line(4),
+    '',
+    '## Layer 3：决策与判断',
+    line(5),
+    '',
+    '## Layer 4：人际行为',
+    line(6),
+    '',
+    '## Layer 5：边界与雷区',
+    '（原材料不足，不推断）',
+    '',
+  ].join('\n');
+
+  return { work, persona };
+}
+
+/** The `[k00NN] text` units of a normalised body, in file order. */
+function unitsOf(body) {
+  const units = [];
+  for (const match of body.matchAll(/^\[(k\d{4}(?::t\d+)?)\]\s+(.*)$/gm)) {
+    units.push({ anchor: match[1], text: match[2].trim() });
+  }
+  return units;
 }
 
 const workdir = await mkdtemp(path.join(tmpdir(), 'dst-acceptance-'));
@@ -195,6 +288,86 @@ try {
   } else {
     record('visual-check 八项通过', vc.status === 0, vcDetail);
   }
+
+  // 5. 交付物：Distill 的最后一公里。
+  //
+  // 这一段以前不存在。验收的 12 项全部围绕 harvest → retrospect → view → render，
+  // **没有一步碰 `skill create`**，于是 SKILL.md —— 这个产品真正交付的东西 —— 可以
+  // 完全不存在而门禁全绿。加进来的判据是机械层能保证的部分：产物齐、六层结构在、
+  // 每条规则都带能回指的锚点。内容由 distillFixture 从语料原文机械拼出。
+  const textDir = path.join(personDir, 'knowledge', 'text');
+  const bodies = await Promise.all(
+    (await (await import('node:fs/promises')).readdir(textDir)).map((name) => readFile(path.join(textDir, name), 'utf8')),
+  );
+  const units = bodies.flatMap((body) => unitsOf(body));
+  const fixture = distillFixture({ units, displayName: person });
+
+  const fixturePaths = {
+    work: path.join(workdir, '.acceptance-work.md'),
+    persona: path.join(workdir, '.acceptance-persona.md'),
+    meta: path.join(workdir, '.acceptance-meta.json'),
+  };
+  await writeFile(fixturePaths.work, fixture.work, 'utf8');
+  await writeFile(fixturePaths.persona, fixture.persona, 'utf8');
+  await writeFile(
+    fixturePaths.meta,
+    `${JSON.stringify({ name: person, display_name: person, character: 'colleague' }, null, 2)}\n`,
+    'utf8',
+  );
+
+  const created = distilly([
+    'skill', 'create',
+    '--character', 'colleague',
+    '--slug', person,
+    '--base-dir', workdir,
+    '--meta', fixturePaths.meta,
+    '--work', fixturePaths.work,
+    '--persona', fixturePaths.persona,
+    '--no-install-claude-skill',
+    '--json',
+  ]);
+  const skillDir = path.join(personDir);
+  const delivered = {};
+  for (const name of REQUIRED_ARTIFACTS) {
+    const file = path.join(skillDir, name);
+    delivered[name] = existsSync(file) ? await readFile(file, 'utf8') : null;
+  }
+  const inspected = inspectSkillArtifacts(delivered, knownAnchors);
+
+  record(
+    'skill create 产出完整交付物',
+    created.status === 0 && inspected.missingArtifacts.length === 0,
+    inspected.missingArtifacts.length === 0
+      ? `${REQUIRED_ARTIFACTS.length} 个产物`
+      : `缺: ${inspected.missingArtifacts.join(', ')}；${created.stderr?.slice(0, 120)}`,
+  );
+  record(
+    '交付物含 PART A / PART B / 运行规则',
+    inspected.missingSections.length === 0,
+    inspected.missingSections.length ? `缺: ${inspected.missingSections.join(', ')}` : '',
+  );
+  record(
+    '交付物六层结构齐且 Layer 0 有规则',
+    inspected.missingLayers.length === 0 && inspected.layer0Rules > 0,
+    inspected.missingLayers.length
+      ? `缺: ${inspected.missingLayers.join(', ')}`
+      : `Layer 0 规则 ${inspected.layer0Rules} 条`,
+  );
+  record(
+    '交付物里的锚点全部可回指',
+    inspected.cited.length > 0 && inspected.dangling.length === 0,
+    `${inspected.cited.length} 个锚点，悬空 ${inspected.dangling.length}` +
+      (inspected.dangling.length ? `: ${inspected.dangling.slice(0, 5).join(', ')}` : ''),
+  );
+
+  const doctor = distilly(['doctor', '--base-dir', workdir, '--json']);
+  const doctorReceipt = parseReceipt(doctor.stdout);
+  const citedRate = doctorReceipt ? `${doctorReceipt.anchors?.cited ?? 0}/${doctorReceipt.anchors?.total ?? 0}` : '无回执';
+  record(
+    'doctor 报出锚点回指率',
+    doctor.status === 0 && (doctorReceipt?.anchors?.cited ?? 0) > 0,
+    citedRate,
+  );
 } catch (error) {
   record('验收流程未中断', false, String(error.message).split('\n')[0]);
 } finally {
