@@ -1,10 +1,18 @@
 name: CI
 
 on:
+  # `ds/**` is not decoration: the 19 per-feature PRs are a **stack** — each targets
+  # the branch before it (`ds/02` → `ds/01`, … , `ds/21` → `ds/20`), and `ds/01`
+  # targets `pre-v2-baseline`. With this list limited to the three integration
+  # branches, not one of them could ever run CI: every PR sat at "no checks
+  # reported" while its body claimed tests. A base branch that no trigger matches is
+  # a gate that does not exist.
   push:
-    branches: [dot-skill-test, dot-skill, main]
+    branches: [dot-skill-test, dot-skill, main, 'ds/**']
   pull_request:
-    branches: [dot-skill-test, dot-skill, main]
+    branches: [dot-skill-test, dot-skill, main, 'ds/**']
+  # Manual re-runs without pushing anything.
+  workflow_dispatch:
 
 jobs:
   test:
