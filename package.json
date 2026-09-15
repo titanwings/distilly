@@ -41,7 +41,7 @@
     "url": "https://github.com/titanwings/distilly/issues"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "publishConfig": {
     "registry": "https://npm.pkg.github.com"

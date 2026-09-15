@@ -29,7 +29,19 @@ playwright-data/
 /tmp/feishu_*.txt
 /tmp/email_*.txt
 /tmp/dingtalk_*.txt
+
+# Every `knowledge/` is user data, wherever the person directory lives. This is an
+# unanchored directory pattern, so it also matches source and fixture directories of
+# the same name; the re-includes below must come *after* it, otherwise the later
+# `knowledge/` rule excludes them again. Tracked files are unaffected either way,
+# so only a newly added module would be lost — and it would be lost silently.
 knowledge/
+# ...except the synthetic ledger fixtures, which are test data and must be tracked
+!src/derive/fixtures/**/knowledge/
+!src/derive/fixtures/**/knowledge/**
+# ...and except the source modules: `src/knowledge/**` is code, not an export
+!src/knowledge/
+!src/knowledge/**
 
 # OS
 .DS_Store
