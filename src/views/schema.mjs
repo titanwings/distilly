@@ -533,6 +533,119 @@ function checkPrivacy(report, view, evidenceIndex, shareable) {
 }
 
 /**
+ * Coerce a loosely shaped view.json into the canonical shape.
+ *
+ * Hand-written view files drift: a section may carry `items` instead of `claims`,
+ * confidence may be missing, a title may be absent. `checkView` reports those as
+ * problems — which is right — but callers still need a *usable* object (for the
+ * slug, for the receipt), so this returns one plus a note per coercion applied.
+ *
+ * Idempotent by construction: every step only fills a gap or replaces a wrong
+ * type, so running it twice yields the same view and no further notes.
+ *
+ * @returns {{view: object|null, notes: string[]}}
+ */
+export function normalizeView(raw) {
+  const notes = [];
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    return { view: null, notes: ["view.json must be a JSON object"] };
+  }
+
+  const view = { ...raw };
+
+  if (view.meta === null || typeof view.meta !== "object" || Array.isArray(view.meta)) {
+    if (view.meta !== undefined) notes.push("meta was not an object; replaced with {}");
+    view.meta = {};
+  } else {
+    view.meta = { ...view.meta };
+  }
+  if (typeof view.meta.slug !== "string" || view.meta.slug.trim() === "") {
+    if (view.meta.slug !== undefined) notes.push("meta.slug was not a non-empty string; dropped");
+    delete view.meta.slug;
+  }
+
+  const rawSections = Array.isArray(view.sections) ? view.sections : [];
+  if (!Array.isArray(view.sections) && view.sections !== undefined) {
+    notes.push("sections was not an array; replaced with []");
+  }
+  view.sections = rawSections.map((section, index) => {
+    const expected = REQUIRED_SECTIONS[index];
+    if (section === null || typeof section !== "object" || Array.isArray(section)) {
+      notes.push(`sections[${index}] was not an object; replaced with an empty section`);
+      return { id: expected?.id ?? `section-${index + 1}`, kind: expected?.kind ?? "claims", title: expected?.title ?? "", items: [] };
+    }
+    const next = { ...section };
+    if (typeof next.id !== "string" || next.id === "") {
+      next.id = expected?.id ?? `section-${index + 1}`;
+      notes.push(`sections[${index}].id was missing; used "${next.id}"`);
+    }
+    if (!KINDS.includes(next.kind)) {
+      next.kind = expected?.kind ?? "claims";
+      notes.push(`sections[${index}].kind was not one of ${KINDS.join("/")}; used "${next.kind}"`);
+    }
+    if (typeof next.title !== "string") {
+      next.title = expected?.title ?? "";
+      notes.push(`sections[${index}].title was not a string; used "${next.title}"`);
+    }
+    if (next.kind === "evidence") {
+      if (!Array.isArray(next.rows)) next.rows = [];
+      delete next.items;
+      return next;
+    }
+    const items = Array.isArray(next.items) ? next.items : Array.isArray(next.claims) ? next.claims : [];
+    if (!Array.isArray(next.items) && Array.isArray(next.claims)) {
+      notes.push(`sections[${index}] used "claims"; read as "items"`);
+    }
+    next.items = items.map((item, itemIndex) => {
+      if (item === null || typeof item !== "object" || Array.isArray(item)) {
+        notes.push(`sections[${index}].items[${itemIndex}] was not an object; replaced`);
+        return { text: "", confidence: "low", evidence: [] };
+      }
+      const entry = { ...item };
+      if (typeof entry.text !== "string") {
+        entry.text = typeof entry.claim === "string" ? entry.claim : "";
+        notes.push(`sections[${index}].items[${itemIndex}].text was missing`);
+      }
+      if (!CONFIDENCE_LEVELS.includes(entry.confidence)) {
+        entry.confidence = "low";
+        notes.push(`sections[${index}].items[${itemIndex}].confidence was not one of ${CONFIDENCE_LEVELS.join("/")}; used "low"`);
+      }
+      if (!Array.isArray(entry.evidence)) {
+        entry.evidence = typeof entry.evidence === "string" ? [entry.evidence] : [];
+        notes.push(`sections[${index}].items[${itemIndex}].evidence was not an array`);
+      }
+      return entry;
+    });
+    delete next.claims;
+    return next;
+  });
+
+  if (!Array.isArray(view.evidence)) {
+    if (view.evidence !== undefined) notes.push("evidence was not an array; replaced with []");
+    view.evidence = [];
+  } else {
+    view.evidence = view.evidence.map((entry, index) => {
+      if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+        notes.push(`evidence[${index}] was not an object; replaced`);
+        return { anchor: "", text: "" };
+      }
+      const next = { ...entry };
+      if (typeof next.anchor !== "string") {
+        next.anchor = typeof next.id === "string" ? next.id : "";
+        notes.push(`evidence[${index}].anchor was missing`);
+      }
+      if (typeof next.text !== "string") {
+        next.text = "";
+        notes.push(`evidence[${index}].text was missing`);
+      }
+      return next;
+    });
+  }
+
+  return { view, notes };
+}
+
+/**
  * Validate one view.json document.
  * @param {unknown} view parsed view.json
  * @param {{viewPath?: string, shareable?: boolean}} [options]
