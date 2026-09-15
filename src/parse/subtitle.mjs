@@ -68,10 +68,11 @@ export function splitSpeakerRuns(lines, initialSpeaker) {
   const label = /([\p{L}\p{N}][\p{L}\p{N} ._'-]{0,23}):\s+/gu;
   const cuts = [];
   for (const match of flat.matchAll(label)) {
-    const at = match.index;
-    if (at > 0 && !/[.!?]\s$/.test(flat.slice(Math.max(0, at - 2), at))) continue;
     const name = speakerFromLine(`${match[1]}: x`);
     if (name === null) continue;
+    // The boundary belongs to the *name*, not to the greedy match that reaches it.
+    const at = match.index + nameStartInMatch(match[0], name);
+    if (at > 0 && !/[.!?]\s$/.test(flat.slice(Math.max(0, at - 2), at))) continue;
     cuts.push({ at, name });
   }
   // No speaker change inside this cue: keep the readable one-paragraph form.
@@ -84,9 +85,10 @@ export function splitSpeakerRuns(lines, initialSpeaker) {
   for (const match of verbatim.matchAll(nameAt)) {
     const name = speakerFromLine(`${match[1]}: x`);
     if (name === null) continue;
-    const before = verbatim.slice(Math.max(0, match.index - 2), match.index);
-    if (match.index > 0 && !/[.!?]\s$/.test(before) && !/\n$/.test(before)) continue;
-    markers.push({ labelStart: match.index, textStart: match.index + match[0].length, name });
+    const labelStart = match.index + nameStartInMatch(match[0], name);
+    const before = verbatim.slice(Math.max(0, labelStart - 2), labelStart);
+    if (labelStart > 0 && !/[.!?]\s$/.test(before) && !/\n$/.test(before)) continue;
+    markers.push({ labelStart, textStart: match.index + match[0].length, name });
   }
   // A label at position 0 is the cue's **own** speaker, and it stays part of the
   // text: that is how every subtitle has always been read (`Lin: 我先说结论…` is
@@ -148,6 +150,26 @@ function speakerFromLine(line) {
   }
   if (name === "" || name.split(/\s+/).length > 5 || name.length > 24) return null;
   return name;
+}
+/**
+ * Where a label's *name* begins inside a regex match.
+ *
+ * The name pattern is greedy, so for `… IN ORDER. MR. LEWIS: I thank you.` the
+ * match begins at the earliest word that can still reach the colon — often
+ * mid-sentence and even mid-word (`L BE IN ORDER. MR. LEWIS: `). Reducing it to
+ * the last sentence fragment moves the real name further right, and testing the
+ * sentence boundary at the *raw* match start rejected nearly every mid-cue change
+ * in a real caption track: the bytes before `L BE …` are `IL`, not `. `, so the
+ * caption stream only ever split a cue when the previous sentence happened to be
+ * short enough for the name to start the match.
+ */
+function nameStartInMatch(matchText, name) {
+  const spaced = name
+    .split(/\s+/)
+    .map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("\\s+");
+  const found = new RegExp(spaced, "u").exec(matchText);
+  return found === null ? 0 : found.index;
 }
 const TIMECODE_ANY = /^\s*\d{1,2}:\d{2}:\d{2}[.,]\d{1,3}\s*-->/;
 const TAG = /<[^>]*>/g;

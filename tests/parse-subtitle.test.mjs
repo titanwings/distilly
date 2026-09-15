@@ -254,3 +254,35 @@ test("a real closed-caption track: speakers split where they change mid-cue", ()
   }
 });
 
+
+test("a mid-cue speaker change is found after a long sentence too", () => {
+  // The name pattern is greedy: for a name reached across more than ~24 characters
+  // the match starts mid-word, so the sentence-boundary test used to look at the
+  // *match* start (`…ORDE|R. LEWIS`, bytes `ER`) instead of at the name, and threw
+  // the change away. A short prefix (`MINUTES. MR. MICA:`) passed, which is why the
+  // defect survived the first real-caption run: only the long-prefix shape failed.
+  const raw = Buffer.from(
+    [
+      "1",
+      "00:00:01,000 --> 00:00:05,000",
+      "THE CHAIR: THE HOUSE WILL BE IN ORDER. MR. LEWIS: I THANK THE GENTLEMAN.",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  const document = parseSubtitle(new SourceFile({ path: "/tmp/mid-cue.srt", raw: new Uint8Array(raw) }));
+
+  assert.equal(document.entries.length, 2, "one record per speaker run");
+  assert.deepEqual(
+    document.entries.map((entry) => entry.speaker),
+    ["THE CHAIR", "MR. LEWIS"],
+  );
+  assert.equal(document.entries[0].text, "THE CHAIR: THE HOUSE WILL BE IN ORDER.", "the head keeps the first speaker's sentence");
+  assert.equal(document.entries[1].text, "I THANK THE GENTLEMAN.");
+
+  // Both runs still cite bytes that are in the payload.
+  const text = raw.toString("utf8");
+  for (const entry of document.entries) {
+    assert.ok(text.includes(entry.text), `${JSON.stringify(entry.text)} must be in the payload`);
+  }
+});
