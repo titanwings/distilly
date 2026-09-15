@@ -183,10 +183,17 @@ try {
   // 4. visual-check（八项）
   const vcScript = path.join(root, 'scripts/visual-check.mjs');
   const vc = spawnSync('node', [vcScript, htmlPath, '--out', evidenceDir], { cwd: workdir, encoding: 'utf8' });
+  // The hint that playwright is missing goes to **stderr**, so a row that quoted
+  // only stdout went red with an empty reason — a gate nobody can act on.
+  const vcDetail =
+    (vc.stdout ?? '').trim().split('\n').slice(-3).join(' / ') ||
+    (vc.stderr ?? '').trim().split('\n').slice(-2).join(' / ');
   if (/Cannot find module|ENOENT/.test(vc.stderr ?? '')) {
     record('visual-check 可用', false, 'scripts/visual-check.mjs 尚不存在（ds/03-render 的产出）');
+  } else if (/DISTILLY_PLAYWRIGHT_ROOT/.test(vc.stderr ?? '')) {
+    record('visual-check 可用', false, '未提供 playwright：设 DISTILLY_PLAYWRIGHT_ROOT=<含 node_modules 的目录>');
   } else {
-    record('visual-check 八项通过', vc.status === 0, (vc.stdout ?? '').trim().split('\n').slice(-3).join(' / '));
+    record('visual-check 八项通过', vc.status === 0, vcDetail);
   }
 } catch (error) {
   record('验收流程未中断', false, String(error.message).split('\n')[0]);
