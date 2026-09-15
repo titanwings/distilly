@@ -1,5 +1,21 @@
 #!/usr/bin/env node
 /**
+ * Is this anchor's outcome a problem?
+ *
+ * Every appendix row must exist, be focusable and be visible; only an anchor the
+ * prose cites must also carry a back-link. Pure so it can be unit-tested without a
+ * browser.
+ */
+export function anchorProblem(outcome, cited) {
+  if (!outcome || outcome.ok !== true) return true;
+  if (outcome.inAppendix !== true) return true;
+  if (outcome.focused !== true) return true;
+  if (outcome.visible !== true) return true;
+  if (cited === true && !(outcome.backLinks >= 1)) return true;
+  return false;
+}
+
+/**
  * distilly visual-check — open a rendered view page in Chrome and assert the
  * eight visual contracts from docs/v2/CONTRACT.md §4:
  *

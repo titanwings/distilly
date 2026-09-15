@@ -1200,6 +1200,70 @@ export function memberParser(member) {
   return null;
 }
 
+/** X archive members this module parses itself, by lower-cased path. */
+const X_MEMBERS = {
+  "data/tweets.js": "tweets",
+  "data/direct-messages.js": "dms",
+  "data/like.js": "likes",
+  "data/likes.js": "likes",
+};
+
+function text(value, fallback = "") {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+/** Route an archive member to the parser that should handle it. */
+export function classifyMember(name) {
+  const lower = name.toLowerCase();
+  if (X_MEMBERS[lower]) return { parser: "x", format: X_MEMBERS[lower] };
+  if (/^data\/.*\.(js|json)$/.test(lower)) return { parser: "x", format: "other" };
+  if (lower.endsWith(".mbox")) return { parser: "email", format: "mbox" };
+  if (lower.endsWith(".eml")) return { parser: "email", format: "eml" };
+  if (lower.endsWith(".srt") || lower.endsWith(".vtt")) return { parser: "subtitle", format: lower.split(".").pop() };
+  if (lower.endsWith(".docx") || lower.endsWith(".xlsx")) return { parser: "office", format: lower.split(".").pop() };
+  if (lower.endsWith(".csv")) return { parser: "csv", format: "csv" };
+  if (lower.endsWith(".json") || lower.endsWith(".js")) return { parser: "chat", format: "json" };
+  if (/\.(txt|md|html?)$/.test(lower)) return { parser: "text", format: lower.split(".").pop() };
+  return { parser: "unsupported", format: null };
+}
+
+/** X archive member → records (the one format this module parses itself). */
+export function parseXMember(name, buffer) {
+  const kind = X_MEMBERS[name.toLowerCase()] ?? "other";
+  const { json } = unwrapJsonAssignment(buffer.toString("utf8"));
+  let value;
+  try {
+    value = JSON.parse(json.trim().replace(/;\s*$/, ""));
+  } catch (error) {
+    throw new Error(`${name} is not a readable X export (${error.message})`);
+  }
+  const rows = Array.isArray(value) ? value : [value];
+  const records = [];
+  for (const row of rows) {
+    if (kind === "tweets" && row?.tweet) {
+      const tweet = row.tweet;
+      records.push({
+        kind: "tweet",
+        text: [text(tweet.created_at), text(tweet.full_text)].filter(Boolean).join(" · "),
+        label: text(tweet.id_str, "tweet"),
+      });
+    } else if (kind === "dms" && row?.dmConversation) {
+      for (const entry of row.dmConversation.messages ?? []) {
+        const message = entry?.messageCreate;
+        if (!message) continue;
+        records.push({
+          kind: "dm",
+          text: [text(message.createdAt), `${text(message.senderId, "?")}: ${text(message.text)}`].filter(Boolean).join(" · "),
+          label: row.dmConversation.conversationId ?? "dm",
+        });
+      }
+    } else if (kind === "likes" && row?.like) {
+      records.push({ kind: "like", text: text(row.like.fullText), label: text(row.like.expandedUrl, "like") });
+    }
+  }
+  return records.filter((record) => record.text.length > 0);
+}
+
 /**
  * Parse a container that holds exactly one document (a `.zip` around one
  * `.mbox`, a `.docx`, a `.zip` around a single chat export).

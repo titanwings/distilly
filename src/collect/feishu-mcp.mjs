@@ -181,6 +181,31 @@ function documentFromText({ text, name, source, method, kind, credentialed, cred
  *          root: string, person: string, family?: string, source?: string, now?: string,
  *          env?: object, label?: string}} input
  */
+/** Parse `collect feishu --mode mcp` arguments; returns `{options}` or `{error}`. */
+export function parseMcpArgs(argv) {
+  const options = { person: null, baseDir: process.cwd(), url: null, chatId: null, target: null, limit: 500, json: false, label: null };
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === "--json") options.json = true;
+    else if (arg === "--mode") {
+      const value = argv[index + 1];
+      if (value !== "mcp") return { error: `feishu-mcp handles --mode mcp only (got ${value ?? "nothing"})` };
+      index += 1;
+    } else if (["--person", "--base-dir", "--url", "--chat-id", "--target", "--limit", "--label"].includes(arg)) {
+      const value = argv[index + 1];
+      if (value === undefined) return { error: `${arg} requires a value` };
+      const key = { "--person": "person", "--base-dir": "baseDir", "--url": "url", "--chat-id": "chatId", "--target": "target", "--limit": "limit", "--label": "label" }[arg];
+      options[key] = key === "limit" ? Number(value) : value;
+      index += 1;
+    } else if (arg.startsWith("--")) return { error: `unknown option: ${arg}` };
+    else if (!options.chatId) options.chatId = arg;
+    else return { error: `unexpected argument: ${arg}` };
+  }
+  if (!options.url && !options.chatId) return { error: "collect feishu --mode mcp needs --url <doc|wiki|sheet> or --chat-id <oc_…>" };
+  if (!options.person) return { error: "--person is required" };
+  return { options };
+}
+
 export async function collectViaMcp(input) {
   const {
     transport,

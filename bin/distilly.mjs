@@ -17,7 +17,7 @@ const packageMetadata = JSON.parse(
   readFileSync(join(packageRoot, "package.json"), "utf8"),
 );
 
-const payloadEntries = [
+export const payloadEntries = [
   "SKILL.md",
   "prompts",
   "references",
