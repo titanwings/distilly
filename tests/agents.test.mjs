@@ -11,10 +11,14 @@
  */
 
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+
+import { HOST_ALIASES, repoInstallDir, supportedHosts } from '../src/install/hosts.mjs';
 
 import {
   AGENTS,
@@ -93,7 +97,9 @@ function evaluateHostTarget(expression, dshHome) {
  * spelled two ways; collapse both to the `$DSH_HOME` spelling.
  */
 function normalizeTarget(target) {
-  return target.replace(/^~\/\.dsh\//, '$DSH_HOME/').replace(/\/{2,}/g, '/');
+  const home = homedir();
+  const withTilde = target.startsWith(`${home}/`) ? `~/${target.slice(home.length + 1)}` : target;
+  return withTilde.replace(/^~\/\.dsh\//, '$DSH_HOME/').replace(/\/{2,}/g, '/');
 }
 
 test('matrix shape: 8 unique hosts, each with a global path and a bilingual note', () => {
@@ -123,52 +129,48 @@ test('matrix shape: 8 unique hosts, each with a global path and a bilingual note
   }
 });
 
-test('bin/distilly.mjs hosts table matches the matrix host-for-host', () => {
-  const binHosts = parseBinHosts(binSource);
-
+test('installer and matrix agree host-for-host', () => {
+  // ds/01 moved the inline `hosts` table out of bin/distilly.mjs into
+  // src/install/hosts.mjs, so the anti-drift check now goes through that API
+  // instead of regex-parsing the executable.
   assert.deepEqual(
-    [...binHosts.keys()].sort(),
+    [...supportedHosts()].sort(),
     [...listAgents()].sort(),
-    'bin/distilly.mjs and src/hosts/agents.mjs must list the same hosts',
+    'src/install/hosts.mjs and src/hosts/agents.mjs must list the same hosts',
   );
 
   for (const id of listAgents()) {
-    const expression = binHosts.get(id);
-    assert.ok(expression, `bin/distilly.mjs is missing host "${id}"`);
-
-    const resolved = evaluateHostTarget(expression, '$DSH_HOME');
+    // A fixed env, not the ambient one: the assertion is about the *target* the
+    // installer computes, and this suite may itself be running under a host that
+    // exports DSH_HOME (the harness does). Without pinning it, `deepseek-harness`
+    // resolves to that host's `$DSH_HOME/skills/distilly` and the comparison
+    // against the `$DSH_HOME/...` template fails for an unrelated reason.
     assert.equal(
-      normalizeTarget(resolved),
+      normalizeTarget(repoInstallDir(id, { env: {} })),
       normalizeTarget(getAgent(id).globalPath),
-      `bin/distilly.mjs installs ${id} to ${resolved}, the matrix says ${getAgent(id).globalPath}`,
+      `the installer puts ${id} somewhere else than the matrix says`,
     );
   }
 
-  // The DSH entry reads $DSH_HOME and falls back to ~/.dsh; both spellings are
+  // DeepSeek Harness reads $DSH_HOME and falls back to ~/.dsh; both spellings are
   // the same target and must stay equivalent to the matrix value.
-  const dshExpression = binHosts.get('deepseek-harness');
-  assert.match(dshExpression, /DSH_HOME/, 'the deepseek-harness entry must read DSH_HOME');
-  assert.match(dshExpression, /\.dsh/, 'the deepseek-harness entry must fall back to ~/.dsh');
   assert.equal(
-    normalizeTarget(evaluateHostTarget(dshExpression, undefined)),
+    normalizeTarget(repoInstallDir('deepseek-harness', { env: {} })),
     normalizeTarget(getAgent('deepseek-harness').globalPath),
     'an unset DSH_HOME must resolve to the same global path as $DSH_HOME',
   );
 
   // `install <alias>` must not be able to reach a host the matrix does not know.
-  const aliasBlock = binSource.match(/const aliases = \{([\s\S]*?)\n\};/);
-  assert.ok(aliasBlock, 'bin/distilly.mjs must declare a `const aliases = { ... };` table');
-  const aliases = [...aliasBlock[1].matchAll(/"?([a-z][a-z0-9-]*)"?\s*:\s*"([^"]+)"/g)];
-  assert.ok(aliases.length > 0, 'bin/distilly.mjs aliases table must not be empty');
-  for (const [, alias, target] of aliases) {
+  for (const [alias, target] of Object.entries(HOST_ALIASES)) {
     assert.ok(listAgents().includes(target), `alias "${alias}" points at unknown host "${target}"`);
   }
 
-  // The --help text is a third hand-written copy of the same list.
+  // The help text must mention every host, so `distilly install` is discoverable.
+  const help = execFileSync('node', ['bin/distilly.mjs', '--help'], { encoding: 'utf8' });
   for (const id of listAgents()) {
     assert.ok(
-      new RegExp(`(^|[\\s,])${id}([\\s,]|$)`, 'm').test(binSource),
-      `bin/distilly.mjs never mentions host "${id}" outside its hosts table`,
+      new RegExp(`(^|[\\s,])${id}([\\s,]|$)`, 'm').test(help),
+      `distilly --help never mentions host "${id}"`,
     );
   }
 });
