@@ -8,6 +8,7 @@
  */
 
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 
 import {
@@ -28,11 +29,18 @@ import {
   syncLegacyFields,
   validatePathSegment,
 } from "./schema.mjs";
+import {
+  generatedSkillsRoot,
+  installGeneratedSkill,
+  installGeneratedSkillForClaude,
+  shouldInstallCommandShim,
+} from "../install/hosts.mjs";
+import { expandUser } from "./presets.mjs";
 import { pinyinSyllables } from "./slug.mjs";
 
-export const SKILL_MD_TEMPLATE_EN = __TEMPLATE_EN__;
+export const SKILL_MD_TEMPLATE_EN = "---\nname: {combined_name}\ndescription: {description}\nuser-invocable: true\n---\n\n# {display_name}\n\n{identity}\n\n---\n\n## PART A: Work\n\n{work_content}\n\n---\n\n## PART B: Persona\n\n{persona_content}\n\n---\n\n## Operating Rules\n\nWhen any task or question arrives:\n\n1. **Start with PART B**: decide whether you would take the task and in what attitude.\n2. **Execute with PART A**: use the work methods, heuristics, and capability profile to do the task.\n3. **Keep PART B in the output**: preserve the tone, diction, rhythm, and reaction patterns from the persona.\n\n**Layer 0 rules in PART B always take priority and must never be violated.**\n";
 
-export const SKILL_MD_TEMPLATE_ZH = __TEMPLATE_ZH__;
+export const SKILL_MD_TEMPLATE_ZH = "---\nname: {combined_name}\ndescription: {description}\nuser-invocable: true\n---\n\n# {display_name}\n\n{identity}\n\n---\n\n## PART A：工作能力\n\n{work_content}\n\n---\n\n## PART B：人物性格\n\n{persona_content}\n\n---\n\n## 运行规则\n\n接收到任何任务或问题时：\n\n1. **先由 PART B 判断**：你会不会接这个任务？用什么态度接？\n2. **再由 PART A 执行**：用你的技术能力和工作方法完成任务\n3. **输出时保持 PART B 的表达风格**：你说话的方式、用词习惯、句式\n\n**PART B 的 Layer 0 规则永远优先，任何情况下不得违背。**\n";
 
 export const MAX_SLUG_LENGTH = 40;
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -97,9 +105,9 @@ const PERSONA_HANDOFF_PATTERNS = [
   /If (?:you are )?asked (?:a question )?outside (?:your|the) (?:recorded )?responsibilities[^.\n]*Persona[^.\n]*\.\s*/gi,
 ];
 
-export const WORK_ONLY_FALLBACK_ZH = __FALLBACK_ZH__;
+export const WORK_ONLY_FALLBACK_ZH = "如果问题超出已记录的职责范围，或原材料不足以回答，请直接说明缺口。不要臆造缺失信息，也不要引用 Persona。";
 
-export const WORK_ONLY_FALLBACK_EN = __FALLBACK_EN__;
+export const WORK_ONLY_FALLBACK_EN = "If the question is outside the recorded responsibilities or the source material is insufficient, state the gap. Do not fabricate missing information or refer to Persona.";
 
 /** Copy Work text for the Work-only skill, without a Persona handoff. */
 export function workOnlyContent(workContent, { chinese }) {
@@ -354,6 +362,54 @@ export function updateSkill(skillDir, workPatch = null, personaPatch = null, cor
 
   writeArtifacts(skillDir, meta, workContent, personaContent);
   return newVersion;
+}
+
+/**
+ * Install a generated skill into the hosts the caller asked for.
+ *
+ * Returns the human lines the CLI prints ("Claude trigger: /x"), so skill create
+ * reports exactly which hosts were touched. Each host is skipped unless asked for,
+ * and Claude is opt-in separately because it also writes a command shim.
+ */
+export function installGeneratedHosts(skillDir, options = {}, installClaudeSkill = false) {
+  const outputLines = [];
+
+  if (installClaudeSkill) {
+    const result = installGeneratedSkillForClaude({
+      skillDir,
+      skillsDir: options.claudeSkillsDir
+        ? expandUser(options.claudeSkillsDir, homedir())
+        : join(homedir(), ".claude", "skills"),
+      commandsDir: options.claudeCommandsDir
+        ? expandUser(options.claudeCommandsDir, homedir())
+        : join(homedir(), ".claude", "commands"),
+      force: true,
+      installCommandShim: Boolean(options.installClaudeCommandShim || shouldInstallCommandShim()),
+    });
+    outputLines.push(`Claude trigger: /${result.command_name}`);
+  }
+
+  if (options.installOpenclawSkill) {
+    const result = installGeneratedSkill({
+      skillDir,
+      skillsDir: options.openclawSkillsDir ? expandUser(options.openclawSkillsDir, homedir()) : generatedSkillsRoot("openclaw"),
+      force: true,
+      host: "openclaw",
+    });
+    outputLines.push(`OpenClaw trigger: /${result.command_name}`);
+  }
+
+  if (options.installCodexSkill) {
+    const result = installGeneratedSkill({
+      skillDir,
+      skillsDir: options.codexSkillsDir ? expandUser(options.codexSkillsDir, homedir()) : generatedSkillsRoot("codex"),
+      force: true,
+      host: "codex",
+    });
+    outputLines.push(`Codex skill name: ${result.command_name}`);
+  }
+
+  return outputLines;
 }
 
 /** List skills from a storage root regardless of their type. */

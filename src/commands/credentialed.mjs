@@ -1,3 +1,6 @@
+/** Channels frozen in CONTRACT §1 that this build does not implement yet. */
+export const PENDING_CHANNELS = {};
+
 /**
  * Credentialed commands — `collect`, `consent`, `transcribe` (from ds/07).
  *

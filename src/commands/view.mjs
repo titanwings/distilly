@@ -11,7 +11,7 @@
 
 import { relative, resolve } from "node:path";
 
-import { register, bilingual } from "./index.mjs";
+import { register } from "./index.mjs";
 import { createReceipt } from "../cli/receipt.mjs";
 import { checkView, expectedSlug, formatDiagnostic, normalizeView } from "../views/schema.mjs";
 import { ViewError, findViewDocuments, loadViewDocument, renderView } from "../views/render.mjs";

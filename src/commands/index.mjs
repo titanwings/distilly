@@ -29,18 +29,10 @@ const REGISTRY = new Map();
 
 /** Commands frozen in CONTRACT §1 whose implementation ships in another branch. */
 export const PLANNED = {
-  harvest: "ds/02-parse-zero-cred",
-  "parse-chat": "ds/02-parse-zero-cred",
-  "parse-email": "ds/02-parse-zero-cred",
-  "parse-subtitle": "ds/02-parse-zero-cred",
-  "parse-doc": "ds/02-parse-zero-cred",
-  "parse-archive": "ds/02-parse-zero-cred",
-  retrospect: "ds/06-retrospect",
-  collect: "ds/07-keys-and-schema",
-  transcribe: "ds/07-keys-and-schema",
-  note: "ds/02-parse-zero-cred",
-  consent: "ds/07-keys-and-schema",
-  view: "ds/03-render",
+  // Contract §1 is fully implemented on this branch (CONTRACT §1 command surface,
+  // 8 collection channels, note, view, skill migrate). The map stays because
+  // `missingCommandError` and `doctor` read it to explain what is *not* here; it
+  // being empty is the signal that nothing is outstanding.
 };
 
 /**
