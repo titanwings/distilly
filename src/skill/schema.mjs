@@ -23,7 +23,13 @@ import {
   normalizeResearchProfile,
 } from "./presets.mjs";
 
-export const SCHEMA_VERSION = "3";
+/**
+ * On-disk schema this build writes.
+ *
+ * 4 is the evidence-spine layout (`knowledge/raw|text|index.json`, `evidence/derived`,
+ * `views/`). `src/skill/migrate.mjs` upgrades a v3 tree to it in place, idempotently.
+ */
+export const SCHEMA_VERSION = "4";
 export const PORTABLE_SLUG_MAX_LENGTH = 40;
 export const PRIMARY_ARTIFACTS = [
   "SKILL.md",

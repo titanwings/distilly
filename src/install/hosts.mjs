@@ -270,6 +270,16 @@ export function shouldInstallCommandShim(systemName = process.platform) {
  * Install a generated combined skill into a host skill directory
  * (`install_generated_skill_common.py`).
  */
+/**
+ * Directories a generated person Skill carries into a host install.
+ *
+ * The v2 layout puts the evidence *inside* the Skill so the host can read
+ * `knowledge/text`, the ledger, the derived claims and the rendered page while
+ * offline. Copying only `SKILL.md` (which is what this did) leaves every citation
+ * dangling at the destination — the page opens but every anchor points at nothing.
+ */
+export const CARRIED_DIRECTORIES = ["knowledge/raw", "knowledge/text", "evidence", "views", "assets"];
+
 export function installGeneratedSkill({
   skillDir,
   skillsDir,
@@ -314,6 +324,22 @@ export function installGeneratedSkill({
     }
     mkdirSync(installDir, { recursive: true });
     writeFileSync(installFile, installedMarkdown, "utf8");
+    // Only directories that exist are copied, and the record lists what travelled,
+    // so "the host has the evidence" is checkable rather than assumed.
+    const carried = [];
+    for (const relativePath of CARRIED_DIRECTORIES) {
+      const source = join(skillDir, relativePath);
+      if (!existsSync(source)) continue;
+      cpSync(source, join(installDir, relativePath), { recursive: true });
+      carried.push(relativePath);
+    }
+    const ledger = join(skillDir, "knowledge", "index.json");
+    if (existsSync(ledger)) {
+      mkdirSync(join(installDir, "knowledge"), { recursive: true });
+      cpSync(ledger, join(installDir, "knowledge", "index.json"));
+      carried.push("knowledge/index.json");
+    }
+    if (carried.length > 0) installRecord.carried = carried;
     writeInstallMetadata(installDir, installRecord);
   }
 
