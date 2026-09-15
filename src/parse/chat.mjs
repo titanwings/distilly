@@ -94,6 +94,14 @@ export function normaliseTimestamp(value) {
   }
   const raw = String(value);
 
+  // Slack sends seconds.microseconds as a string. The integer part is the
+  // Unix second; the fraction is sub-second precision we deliberately drop,
+  // because every consumer downstream wants a stable ISO instant.
+  if (/^\d{9,19}\.\d+$/.test(raw)) {
+    const seconds = Number(raw.split(".")[0]);
+    return { iso: new Date(seconds * 1000).toISOString(), raw, inferredUnit: "seconds-fraction" };
+  }
+
   if (/^\d{9,19}$/.test(raw)) {
     const numeric = Number(raw);
     // Slack uses seconds (10 digits), Discord ISO, Telegram both seconds and

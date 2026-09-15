@@ -42,7 +42,22 @@ function slackExport(root, messages = 12) {
     });
   }
   writeFileSync(join(dir, "messages.json"), `${JSON.stringify(rows, null, 2)}\n`, "utf8");
-  copyFileSync(join(CHAT_FIXTURES, "slack-users.json"), join(dir, "users.json"));
+  // This synthetic export names its own people, so it ships its own users.json:
+  // the rows above use U01/U02, while the shared fixture uses U01SYNTH/U02SYNTH.
+  // Copying that one would silently leave the ids unresolved and the assertions
+  // below would be testing the wrong thing.
+  writeFileSync(
+    join(dir, "users.json"),
+    `${JSON.stringify(
+      [
+        { id: "U01", name: "alice", profile: { display_name: "Alice", real_name: "Alice" } },
+        { id: "U02", name: "bob", profile: { display_name: "Bob", real_name: "Bob" } },
+      ],
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
   return dir;
 }
 
