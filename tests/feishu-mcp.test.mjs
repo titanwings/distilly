@@ -219,7 +219,12 @@ test("cli: a missing credential fails loudly and names the config file only", as
   const missingHome = join(box.root, "empty-home");
   mkdirSync(missingHome, { recursive: true });
   const previous = process.env.DISTILLY_HOME;
+  const previousHome = process.env.HOME;
   process.env.DISTILLY_HOME = missingHome;
+  // `loadCredential` also reads the pre-rename `~/.colleague-skill/<file>`, so an
+  // empty DISTILLY_HOME is not enough to make the credential absent: on a machine
+  // that still has the legacy file this test read it and reported success.
+  process.env.HOME = missingHome;
   try {
     const result = await runCollectCli(["--mode", "mcp", "--chat-id", "oc_demo", "--person", "demo", "--base-dir", box.work], {
       transport: fakeTransport({ result: "unused" }),
@@ -234,5 +239,7 @@ test("cli: a missing credential fails loudly and names the config file only", as
   } finally {
     if (previous === undefined) delete process.env.DISTILLY_HOME;
     else process.env.DISTILLY_HOME = previous;
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
   }
 });

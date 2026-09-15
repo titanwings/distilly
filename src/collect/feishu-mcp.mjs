@@ -343,3 +343,100 @@ export function normaliseMcpMessages(items) {
     body: item.body ?? { content: item.content ?? "" },
   }));
 }
+
+/**
+ * `distilly collect feishu --mode mcp …`
+ *
+ * Mirrors the other channels' CLI entry: parse, load the credential (naming the
+ * config file, never its contents), route one allowed tool call through the MCP
+ * client, and print either the receipt or a human line. `io.transport` lets the
+ * tests drive the client without spawning `npx`.
+ */
+export async function runCollectCli(argv, io = {}) {
+  const out = typeof io.stdout === "function" ? io.stdout : (line) => process.stdout.write(`${line}\n`);
+  const err = typeof io.stderr === "function" ? io.stderr : (line) => process.stderr.write(`${line}\n`);
+  const parsed = parseMcpArgs(argv);
+  if (parsed.error) {
+    const receipt = {
+      command: "collect",
+      channel: CHANNEL,
+      mode: MODE,
+      ok: false,
+      credential_file: CONFIG_FILE,
+      warnings: [],
+      outputs: [],
+      anchors: { total: 0, cited: 0 },
+      errors: [parsed.error],
+      unavailable: [{ channel: CHANNEL, reason: parsed.error, remediation: ["distilly collect feishu --help"] }],
+    };
+    if (!parsed.options?.json) err(`collect feishu (mcp): ${parsed.error}`);
+    else out(JSON.stringify(receipt, null, 2));
+    return { ok: false, exitCode: 2, receipt };
+  }
+
+  const { options } = parsed;
+  // `loadCredential` *throws* a `CollectFailure` when there is no credential at all
+  // (rather than returning empty values), so the CLI has to catch it to produce the
+  // contract-shaped failure with `credential_file` named and no secret in it.
+  let credential = null;
+  let credentialError = null;
+  try {
+    credential = loadCredential({ configFile: CONFIG_FILE, envKeys: ["FEISHU_APP_ID", "FEISHU_APP_SECRET"], fields: ["app_id", "app_secret"], env: io.env ?? process.env });
+  } catch (error) {
+    credentialError = error;
+  }
+  if (credentialError || !credential.values?.app_id || !credential.values?.app_secret) {
+    const reason = credentialError ? credentialError.message : `no usable credential: ${CONFIG_FILE} is missing or incomplete`;
+    const receipt = {
+      command: "collect",
+      channel: CHANNEL,
+      mode: MODE,
+      ok: false,
+      credential_file: CONFIG_FILE,
+      warnings: [],
+      outputs: [],
+      anchors: { total: 0, cited: 0 },
+      errors: [reason],
+      unavailable: [
+        {
+          channel: CHANNEL,
+          reason,
+          remediation: credentialError?.remediation ?? [`create ~/.distilly/${CONFIG_FILE} with app_id and app_secret`, "or export FEISHU_APP_ID / FEISHU_APP_SECRET"],
+        },
+      ],
+    };
+    if (options.json) out(JSON.stringify(receipt, null, 2));
+    else {
+      err(`collect feishu (mcp): ${reason}`);
+      for (const step of receipt.unavailable[0].remediation) err(`  fix: ${step}`);
+    }
+    return { ok: false, exitCode: 1, receipt };
+  }
+
+  // A chat id and a document URL route to different tools: `toolForUrl` parses a
+  // *document* URL and has nothing to say about `oc_…`, so asking it about a chat
+  // id threw before any call was made.
+  const routed = options.chatId
+    ? { tool: "get_chat_messages", arguments: { chat_id: options.chatId, page_size: 50 }, kind: "chat" }
+    : toolForUrl(options.url);
+  const tool = routed.tool;
+  const target = options.target ?? options.chatId ?? extractDocToken(options.url).token;
+  const result = await collectViaMcp({
+    transport: io.transport,
+    config: credential.values,
+    tool,
+    arguments: routed.arguments,
+    target,
+    root: options.baseDir,
+    person: options.person,
+    env: io.env ?? process.env,
+  });
+
+  if (options.json) out(JSON.stringify(result.receipt, null, 2));
+  else if (result.ok) out(`collect feishu (mcp): ${result.receipt.messages} message(s) via ${result.receipt.tool}`);
+  else {
+    for (const failure of result.receipt.errors ?? []) err(`collect feishu (mcp): ${failure}`);
+    for (const item of result.receipt.unavailable ?? []) for (const step of item.remediation ?? []) err(`  fix: ${step}`);
+  }
+  return result;
+}

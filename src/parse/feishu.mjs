@@ -23,6 +23,7 @@
  * Zero dependencies, no network: this only reads bytes it is handed.
  */
 
+import { normaliseTimestamp } from "./chat.mjs";
 import { buildDocument, recordsFromCharSpans, stableJson, truncate } from "./common.mjs";
 
 /** The aliases `tools/feishu_parser.py` accepted, in its order. */
@@ -233,7 +234,10 @@ export function parseFeishu(file, options = {}) {
         charEnd: index === -1 ? -1 : index + at.length,
         kind: "message",
         speaker: sender,
-        at: timestamp === null ? "" : String(timestamp),
+        // Feishu's `create_time` is a millisecond epoch; the text file (and every
+        // derivation that reads it) wants an ISO instant. An unparseable value is
+        // kept verbatim — same rule as the other parsers.
+        at: timestamp === null ? "" : (normaliseTimestamp(timestamp).iso ?? String(timestamp)),
         label: sender === "" ? "message" : sender,
         synthetic: index === -1,
       });
@@ -261,6 +265,12 @@ export function parseFeishu(file, options = {}) {
     kind: "message",
     method: options.method ?? "local-file",
     source: options.source ?? "feishu",
+    // As in `parseChat`/`parseEmail`: the caller knows how it obtained the bytes.
+    // The MCP client asks for `credentialed: true` plus the credential file, and
+    // dropping them made an authenticated fetch indistinguishable from a local read.
+    ...(options.credentialed === undefined ? {} : { credentialed: options.credentialed }),
+    ...(options.credential_file ? { credential_file: options.credential_file } : {}),
+    ...(options.credential_source ? { credential_source: options.credential_source } : {}),
     files: [file],
     records,
     warnings,
