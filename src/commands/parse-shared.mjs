@@ -15,9 +15,9 @@ import { KnowledgeStore, sha256Hex } from "../knowledge/store.mjs";
 import { ledgerStats, loadLedger, recordDocument, saveLedger } from "../knowledge/ledger.mjs";
 import { SourceFile } from "../parse/common.mjs";
 
-/** `--person/--base-dir/--source/--fetched-at/--json` plus positional paths. */
+/** `--person/--base-dir/--source/--fetched-at/--users/--format/--json` plus positional paths. */
 export function parseCommonArgs(argv) {
-  const options = { person: null, baseDir: process.cwd(), source: null, json: false, fetchedAt: null, users: null };
+  const options = { person: null, baseDir: process.cwd(), source: null, json: false, fetchedAt: null, users: null, format: null };
   const paths = [];
   const takesValue = {
     "--person": "person",
@@ -25,6 +25,9 @@ export function parseCommonArgs(argv) {
     "--source": "source",
     "--fetched-at": "fetchedAt",
     "--users": "users",
+    // A channel log or a bare `.txt` has no self-describing shape; the caller
+    // declares it (`--format feishu-text`) instead of the parser guessing.
+    "--format": "format",
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];

@@ -226,10 +226,22 @@ export function anchorOwners(ledger) {
 
 /**
  * Resolve a `[k00NN]` / `[k00NN:tM]` citation anywhere in the ledger.
+ *
+ * Two call shapes are in use: `(ledger, anchor)` when only the offsets matter,
+ * and `(store, ledger, anchor)` when the caller also wants the raw bytes the
+ * citation points at. Both are accepted — the store is optional, and when it is
+ * omitted the result simply carries no `bytes` (the ledger stores offsets, never
+ * payloads).
+ *
  * @returns {{entry: object, anchor: string, text: string, byteStart: number,
- *            byteEnd: number, file: string|null, kind: string}|null}
+ *            byteEnd: number, file: string|null, kind: string,
+ *            bytes?: Uint8Array|null}|null}
  */
-export function resolveLedgerAnchor(ledger, anchor) {
+export function resolveLedgerAnchor(ledgerOrStore, ledgerOrAnchor, maybeAnchor) {
+  const withStore = maybeAnchor !== undefined;
+  const store = withStore ? ledgerOrStore : null;
+  const ledger = withStore ? ledgerOrAnchor : ledgerOrStore;
+  const anchor = withStore ? maybeAnchor : ledgerOrAnchor;
   const parsed = parseAnchor(anchor);
   if (!parsed) return null;
   const entry = anchorOwners(ledger).get(parsed.id) ?? null;
@@ -240,7 +252,7 @@ export function resolveLedgerAnchor(ledger, anchor) {
   // so an entry written by another producer still resolves.
   const detail = (entry.anchor_detail ?? []).find((candidate) => (candidate.anchor ?? candidate.id) === anchor);
   if (detail) {
-    return {
+    return withStoreBytes(store, {
       entry,
       anchor,
       kind: detail.kind ?? "item",
@@ -248,18 +260,18 @@ export function resolveLedgerAnchor(ledger, anchor) {
       byteStart: detail.byteStart ?? null,
       byteEnd: detail.byteEnd ?? null,
       file: detail.file ?? null,
-    };
+    });
   }
   const listed = (entry.anchors ?? []).some((candidate) =>
     typeof candidate === "string" ? candidate === anchor : candidate.anchor === anchor || candidate.id === anchor,
   );
   if (listed) {
-    return { entry, anchor, kind: "item", text: "", byteStart: null, byteEnd: null, file: null };
+    return withStoreBytes(store, { entry, anchor, kind: "item", text: "", byteStart: null, byteEnd: null, file: null });
   }
 
   const unit = (entry.units ?? []).find((candidate) => candidate.anchor === anchor || candidate.id === anchor);
   if (!unit) return null;
-  return {
+  return withStoreBytes(store, {
     entry,
     anchor,
     kind: "para",
@@ -267,7 +279,33 @@ export function resolveLedgerAnchor(ledger, anchor) {
     byteStart: unit.byteStart ?? null,
     byteEnd: unit.byteEnd ?? null,
     file: unit.file ?? null,
-  };
+  });
+}
+
+/**
+ * Attach the raw payload slice a resolved anchor points at, when a store was
+ * supplied and the bytes are still on disk.
+ *
+ * The slice is read back rather than trusted: `byteStart`/`byteEnd` are numbers
+ * the ledger recorded, and "this citation really does address these bytes" is
+ * the property the whole evidence spine rests on. An unreadable file leaves
+ * `bytes: null` instead of throwing — the offsets are still the answer.
+ */
+function withStoreBytes(store, resolved) {
+  if (!store || typeof store.readRaw !== "function") return resolved;
+  const location = resolved.entry?.locations?.raw ?? null;
+  if (!location || resolved.byteStart === null || resolved.byteEnd === null) {
+    return { ...resolved, bytes: null };
+  }
+  const parts = String(location).split("/").filter(Boolean);
+  const name = parts.pop();
+  const bucket = parts.pop();
+  if (!bucket || !name) return { ...resolved, bytes: null };
+  try {
+    return { ...resolved, bytes: store.readRaw(bucket, name).subarray(resolved.byteStart, resolved.byteEnd) };
+  } catch {
+    return { ...resolved, bytes: null };
+  }
 }
 
 function normaliseWarnings(warnings) {

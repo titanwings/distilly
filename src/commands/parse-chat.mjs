@@ -14,6 +14,7 @@ import { dirname, join } from "node:path";
 import { register } from "./index.mjs";
 import { parseCommonArgs, parseFailure, runParseCommand } from "./parse-shared.mjs";
 import { parseChat } from "../parse/chat.mjs";
+import { detectFeishuFormat, parseFeishu } from "../parse/feishu.mjs";
 
 const EXTENSIONS = new Set([".json"]);
 
@@ -56,15 +57,34 @@ register("parse-chat", {
       paths,
       json,
       reporter,
-      accept: (file, extension) =>
-        EXTENSIONS.has(extension) ? true : `not a chat export (expected .json, got ${extension || "(none)"})`,
-      parser: (source, { file }) =>
-        parseChat(source, {
+      accept: (file, extension) => {
+        if (EXTENSIONS.has(extension)) return true;
+        // A Feishu manual log is plain text with no self-describing shape, so it
+        // is accepted only when the caller says what it is. The refusal has to
+        // name the flag, otherwise the only way forward is guessing.
+        if (extension === ".txt" && options.format === "feishu-text") return true;
+        if (extension === ".txt") {
+          return "a .txt log needs an explicit --format feishu-text (the shape cannot be detected from the text alone)";
+        }
+        return `not a chat export (expected .json, got ${extension || "(none)"})`;
+      },
+      parser: (source, { file }) => {
+        // A Feishu page export is JSON too, and `parseChat`'s detector names the
+        // shape (`feishu-export`) without owning a parser for it — so
+        // `parse-chat <feishu.json>` used to fail with "format feishu-export has
+        // no parser". Ask the Feishu detector first, exactly as `harvest` does;
+        // the verdict is `format`, not the wrapper object.
+        const feishu = options.format ? { format: options.format } : detectFeishuFormat(source);
+        if (feishu?.format) {
+          return parseFeishu(source, { source: options.source ?? "feishu", method: "user-export", format: feishu.format });
+        }
+        return parseChat(source, {
           source: options.source ?? "chat",
           method: "user-export",
           users: siblingUsers(file, options.users) ?? undefined,
           channelName: file.replace(EXTENSIONS.has(".json") ? /\.json$/i : /$^/, ""),
-        }),
+        });
+      },
     });
   },
 });

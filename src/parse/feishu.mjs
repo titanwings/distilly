@@ -151,9 +151,15 @@ export function detectFeishuFormat(file) {
  * @param {{source?: string, method?: string, format?: string}} [options]
  */
 export function parseFeishu(file, options = {}) {
+  // The detector is always run: it is what parses the payload (`value`), and a
+  // declared `format` only overrides the *label*. Building the result from the
+  // format alone left `value` undefined and the iteration below threw
+  // "detected.value is not iterable" — so `--format feishu-text` on a `.txt` log
+  // failed even though the caller had said exactly what the file was.
+  const byShape = detectFeishuFormat(file);
   const detected = options.format
-    ? { format: options.format, reasons: ["format supplied by the caller"], value: undefined }
-    : detectFeishuFormat(file);
+    ? { ...byShape, format: options.format, reasons: ["format supplied by the caller", ...(byShape.reasons ?? [])] }
+    : byShape;
   // The detector answers "this is not Feishu" by returning `format: null`; the
   // refusal belongs here, where the caller asked for a parse. Without this guard
   // the loop below would run over `undefined` and throw a TypeError instead.
@@ -198,6 +204,13 @@ export function parseFeishu(file, options = {}) {
     }
   } else {
     const document = file.text ?? "";
+    // A caller can declare a shape the detector could not read; say so plainly
+    // rather than iterating `undefined`.
+    if (!Array.isArray(detected.value)) {
+      throw new Error(
+        `${file.label} is not a Feishu export: ${(detected.reasons ?? []).join("; ") || "the payload holds no message array"}`,
+      );
+    }
     for (const item of detected.value) {
       if (!item || typeof item !== "object") continue;
       const sender = flattenSender(firstKey(item, SENDER_KEYS));
