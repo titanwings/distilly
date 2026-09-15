@@ -222,6 +222,15 @@ function checkSections(report, sections, evidenceIndex, options = {}) {
 
     const id = isNonEmptyString(section.id) ? section.id : null;
     const identity = id ?? null;
+    // A section the author marked `gap: true` is a declared absence of evidence:
+    // "this segment has nothing to cite, and saying so is the honest answer". That
+    // is exactly what `allowMissing` exists for, so it applies per section rather
+    // than needing the whole page to opt in. A citation of a *nonexistent* anchor
+    // stays an error either way.
+    const sectionThin =
+      allowMissing || section.gap === true
+        ? (code, message, subject, evidence, fixes) => report.warn(code, message, subject, evidence, fixes)
+        : thin;
     if (!id) {
       report.error("VIEW_SECTION_ID_MISSING", `${path} needs a string id`, { path: `${path}.id`, identity: null }, { observed: section.id ?? null }, [`use one of: ${SECTION_IDS.join(", ")}`]);
     } else if (!SECTION_IDS.includes(id)) {
@@ -307,7 +316,7 @@ function checkSections(report, sections, evidenceIndex, options = {}) {
 
       const anchors = Array.isArray(item.anchors) ? item.anchors : null;
       if (!anchors || anchors.length === 0) {
-        thin(
+        sectionThin(
           "VIEW_ANCHOR_MISSING",
           `${itemPath} needs at least one evidence anchor`,
           { path: `${itemPath}.anchors`, identity: identity ?? text?.slice(0, 24) ?? null },
@@ -351,7 +360,7 @@ function checkSections(report, sections, evidenceIndex, options = {}) {
       }
 
       if (section.kind === "timeline" && !isNonEmptyString(item.at)) {
-        thin(
+        sectionThin(
           "VIEW_TIMELINE_AT_MISSING",
           `${itemPath}.at is required for timeline entries`,
           { path: `${itemPath}.at`, identity: text?.slice(0, 24) ?? null },

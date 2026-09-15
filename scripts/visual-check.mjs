@@ -33,6 +33,7 @@ export function anchorProblem(outcome, cited) {
  *
  *   node scripts/visual-check.mjs views/<slug>.html [--out <dir>] [--json]
  */
+import { isEntryPoint } from "../src/cli/entry.mjs";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -526,9 +527,15 @@ async function main() {
   }
 }
 
-try {
-  process.exitCode = await main();
-} catch (error) {
-  console.error(`Error: ${error && error.message ? error.message : error}`);
-  process.exitCode = 1;
+// Only run when invoked directly. `tests/visual-check-rule.test.mjs` imports this
+// module for its checks, and an unguarded `main()` launched a browser and printed
+// the usage text during that import — which made the whole test *file* fail rather
+// than any single assertion in it.
+if (isEntryPoint(import.meta.url)) {
+  try {
+    process.exitCode = await main();
+  } catch (error) {
+    console.error(`Error: ${error && error.message ? error.message : error}`);
+    process.exitCode = 1;
+  }
 }

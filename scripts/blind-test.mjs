@@ -304,7 +304,7 @@ function prepare() {
   const person = arg("person");
   const out = arg("out");
   if (!a || !person || !out) {
-    console.error("usage: node scripts/blind-test.mjs prepare --a <A.srt> --person <slug> --out <dir> [--baseline]");
+    console.error("usage: node scripts/blind-test.mjs prepare --a <A.srt> --person <slug> --out <dir> [--skeleton-only]");
     process.exit(2);
   }
   const work = join(out, "work");
@@ -359,7 +359,12 @@ function prepare() {
     ],
   };
 
-  if (flag("baseline")) {
+  // The page is rendered by default: a judge handed `judge-prompt.md` with no
+  // `profile.html` has nothing to read, which is how this arm could "pass" while
+  // producing no artefact at all. `--skeleton-only` keeps the old behaviour (write
+  // the skeleton and stop, for a model that will author the view itself); the
+  // historical `--baseline` flag still means the same thing it always did.
+  if (flag("baseline") || !flag("skeleton-only")) {
     const built = baselineSections(derivation);
     const view = buildView({ slug: person, sections: built.sections, evidence: built.evidence });
     const viewPath = join(out, "view.baseline.json");
@@ -383,6 +388,26 @@ function prepare() {
 }
 
 /** Validate + render one view document, then copy the page next to the receipt. */
+/**
+ * Distinct anchors cited by a rendered page.
+ *
+ * The page embeds its view data as JSON and the viewer turns each citation into
+ * markup at runtime, so the file itself contains `"anchor": "k00NN"` rather than
+ * `[k00NN]`. Counting the bracket form (as this first did) reported 0 for a page
+ * full of citations.
+ */
+function countRenderedAnchors(html) {
+  const embedded = /"sections"\s*:\s*\[/.test(html) ? html : "";
+  const cited = new Set();
+  for (const match of embedded.matchAll(/"anchors"\s*:\s*\[([^\]]*)\]/g)) {
+    for (const anchor of match[1].matchAll(/"(k\d{4}(?::t\d+)?)"/g)) cited.add(anchor[1]);
+  }
+  if (cited.size === 0) {
+    for (const match of html.matchAll(/"anchor"\s*:\s*"(k\d{4}(?::t\d+)?)"/g)) cited.add(match[1]);
+  }
+  return cited.size;
+}
+
 function finalizeView({ out, viewPath, slug, personDir, receipt, source }) {
   const checked = distilly(["view", "check", "--file", viewPath, "--json"], personDir, { tolerate: true });
   const rendered = distilly(["view", "render", "--file", viewPath, "--out", join(out, "profile.html"), "--json"], personDir, {
@@ -399,6 +424,12 @@ function finalizeView({ out, viewPath, slug, personDir, receipt, source }) {
     render: { ok: rendered.receipt?.ok ?? false, exit: rendered.status },
     html: { file: "profile.html", sha256: sha256(html), bytes: Buffer.byteLength(html) },
     external_links: /(?:src|href)\s*=\s*["']https?:/i.test(html) ? "present" : "none",
+    // How many distinct anchors the page cites, read back out of the rendered HTML
+    // rather than from the view spec: the judge's page is the artefact under test,
+    // and a citation that did not survive rendering must not be counted. The
+    // citations live in the embedded view-data JSON (the viewer renders them into
+    // `data-anchor-ref` attributes at runtime), so the count comes from there.
+    anchors: countRenderedAnchors(html),
   };
 }
 

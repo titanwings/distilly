@@ -71,7 +71,9 @@ if (extension === ".srt" || extension === ".vtt") {
   const b = cues.slice(boundary);
   aText = render(a);
   bText = render(b);
-  by = "time";
+  // The vocabulary is "timecode" everywhere else (`cut.timecode`, the subtitle
+  // parser's `meta.timecodes`), so the receipt says the same thing.
+  by = "timecode";
   cut = {
     index: boundary,
     timecode: formatTimecode(cues[boundary].start),
