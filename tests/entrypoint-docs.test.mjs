@@ -39,18 +39,23 @@ test("Codex keeps its documented discovery directory", () => {
   assert.match(read("src/install/hosts.mjs"), /\.distilly-install\.json/);
 });
 
-test("the Python collectors that stay behind keep reading the private config paths", () => {
-  for (const name of [
-    "feishu_auto_collector.py",
-    "feishu_mcp_client.py",
-    "dingtalk_auto_collector.py",
-    "slack_auto_collector.py",
-  ]) {
-    const source = read(join("tools", name));
-    assert.match(source, /Path\.home\(\) \/ "\.distilly"/, name);
-    assert.match(source, /Path\.home\(\) \/ "\.colleague-skill"/, name);
-    assert.match(source, /CONFIG_PATH\.chmod\(0o600\)/, name);
+test("the collectors keep reading the private config paths, not the repo", () => {
+  // v2 retired `tools/*.py`, so the pre-port version of this test read files that
+  // no longer exist. The discipline it protected is unchanged and now lives in
+  // `src/collect/kit.mjs`, so it is asserted there instead of being dropped.
+  const kit = read(join("src", "collect", "kit.mjs"));
+  assert.match(kit, /join\(homedir\(\), "\.distilly"\)/, "primary credentials live under ~/.distilly");
+  assert.match(kit, /"\.colleague-skill"/, "the pre-rename location stays readable");
+
+  // Every credentialed channel names its config file; none may read a key from
+  // the working tree.
+  for (const name of ["feishu", "dingtalk", "slack", "x", "discord", "gmail", "notion", "reddit"]) {
+    const source = read(join("src", "collect", `${name}.mjs`));
+    assert.match(source, /export const CONFIG_FILE = "[a-z]+_config\.json";/, name);
   }
+
+  // The consent token file is a credential: it is written 0600.
+  assert.match(read(join("src", "consent.mjs")), /chmodSync\(staging, 0o600\)/);
 });
 
 test("every command the prompts may reference is registered or explicitly planned", () => {

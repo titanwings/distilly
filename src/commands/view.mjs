@@ -12,7 +12,7 @@
 import { relative, resolve } from "node:path";
 
 import { register } from "./index.mjs";
-import { createReceipt } from "../cli/receipt.mjs";
+import { CliError, createReceipt } from "../cli/receipt.mjs";
 import { checkView, expectedSlug, formatDiagnostic, normalizeView } from "../views/schema.mjs";
 import { ViewError, findViewDocuments, loadViewDocument, renderView } from "../views/render.mjs";
 
@@ -162,6 +162,41 @@ const renderCommand = {
     }
   },
 };
+
+const viewHelp = {
+  zh: [
+    "用法 / Usage:",
+    "  distilly view check  --person <slug> [--base-dir <dir>] [--json]",
+    "  distilly view render --person <slug> [--base-dir <dir>] [--shareable] [--json]",
+    "",
+    "`view` 没有独立行为：它是一组子命令的入口。`check` 只读校验视图与锚点，",
+    "`render` 生成单文件离线 HTML；SKILL.md 里写的 `distilly view check` 属于前者。",
+  ].join("\n"),
+  en: [
+    "Distilly view — inspect and render a view.",
+    "",
+    "`view` has no behaviour of its own; it is the entry point for its subcommands.",
+    "`check` validates the view and its anchors without writing anything, `render`",
+    "produces the single-file offline HTML. `distilly view check` in SKILL.md is the",
+    "former.",
+  ].join("\n"),
+};
+
+register("view", {
+  summary: "View 子命令入口 / View subcommand entry",
+  usage: "distilly view <check|render> [options]",
+  ...viewHelp,
+  run({ argv, reporter }) {
+    if (argv.length === 0) {
+      reporter.line(viewHelp.zh);
+      return { receipt: createReceipt("view", { warnings: [] }) };
+    }
+    throw new CliError(`unknown view subcommand: ${argv[0]}`, {
+      code: "usage",
+      remedy: "choose one of: check, render.",
+    });
+  },
+});
 
 register("view check", checkCommand);
 register("view render", renderCommand);

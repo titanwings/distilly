@@ -77,16 +77,23 @@ export function listCommands({ includeHidden = false } = {}) {
 /**
  * Split argv into a command name and its remaining arguments.
  * Two-token names win over one-token names (`view check` before `view`).
+ *
+ * Accepts either an argv array or a single command string — the acceptance
+ * script and several tests ask about a command by name ("parse-chat"), and a
+ * string is not an argv array: it must be split, not indexed per character.
+ *
+ * @param {string[]|string} tokens
  */
 export function resolveCommand(tokens) {
-  if (tokens.length >= 2) {
-    const twoToken = `${tokens[0]} ${tokens[1]}`;
-    if (registry().has(twoToken)) return { name: twoToken, rest: tokens.slice(2) };
+  const argv = typeof tokens === "string" ? tokens.trim().split(/\s+/).filter(Boolean) : [...tokens];
+  if (argv.length >= 2) {
+    const twoToken = `${argv[0]} ${argv[1]}`;
+    if (registry().has(twoToken)) return { name: twoToken, rest: argv.slice(2) };
   }
-  if (tokens.length >= 1 && registry().has(tokens[0])) {
-    return { name: tokens[0], rest: tokens.slice(1) };
+  if (argv.length >= 1 && registry().has(argv[0])) {
+    return { name: argv[0], rest: argv.slice(1) };
   }
-  return { name: tokens[0] ?? null, rest: tokens.slice(1) };
+  return { name: argv[0] ?? null, rest: argv.slice(1) };
 }
 
 /** `null` when the command is registered, otherwise a loud, actionable error. */
@@ -249,6 +256,8 @@ import "./migrate.mjs";
 import "./note.mjs";
 import "./parse-chat.mjs";
 import "./parse-email.mjs";
+import "./parse-doc.mjs";
+import "./parse-archive.mjs";
 import "./parse-subtitle.mjs";
 import "./retrospect.mjs";
 import "./skill.mjs";
