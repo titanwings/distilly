@@ -1,0 +1,7 @@
+[
+  { "type": "message", "user": "U01SYNTH", "text": "Standup in five minutes.", "ts": "1700000100.000100" },
+  { "type": "message", "subtype": "channel_join", "user": "U02SYNTH", "text": "<@U02SYNTH> has joined the channel", "ts": "1700000101.000200" },
+  { "type": "message", "user": "U02SYNTH", "text": "I will post the numbers after lunch.", "ts": "1700000200.000300" },
+  { "type": "message", "user": "U03BOT", "text": "Deploy finished.", "ts": "1700000300.000400" },
+  { "type": "message", "user": "U01SYNTH", "text": "", "ts": "1700000400.000500" }
+]

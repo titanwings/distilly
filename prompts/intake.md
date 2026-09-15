@@ -197,3 +197,4 @@ Collect the minimum manual profile for a new Skill: 3 questions for `colleague` 
 - Which files were created or updated, each with its sha256 (from the `distilly` `--json` receipt or `knowledge/index.json`); write "none" when intake writes no file.
 - Which channels were unavailable (`unavailable[]`).
 - Which fields were never asked, which steps were skipped, and why.
+

@@ -286,3 +286,4 @@ def resolve_existing_storage_root(
     if legacy and legacy.exists():
         return legacy
     return canonical
+

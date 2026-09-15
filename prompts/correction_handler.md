@@ -228,3 +228,4 @@ Identify the user's correction intent and route it to exactly one of two outputs
 - Which files were created or updated, each with its sha256 (from the `distilly` `--json` receipt or `knowledge/index.json`).
 - Which channels were unavailable (`unavailable[]`).
 - Which corrections are unresolved, which steps were skipped, and why.
+

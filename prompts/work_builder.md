@@ -163,3 +163,4 @@ Turn the `work_analyzer.md` output into the `work.md` body: Part A of the genera
 - Which files were created or updated, each with its sha256 (from the `distilly` `--json` receipt or `knowledge/index.json`).
 - Which channels were unavailable (`unavailable[]`).
 - Which sections are thin, which steps were skipped, and why.
+

@@ -409,3 +409,4 @@ def build_manifest(meta: dict) -> dict:
             },
         },
     }
+

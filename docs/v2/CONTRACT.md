@@ -85,3 +85,4 @@ skills/<family>/<slug>/
 ## 6. 双语
 
 prompt 与用户可见文档：**单文件双语**，中文段 → `---` → `## English`。
+

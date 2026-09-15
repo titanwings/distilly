@@ -1,0 +1,18 @@
+WEBVTT
+Kind: captions
+Language: en
+
+NOTE
+This file is synthetic; no real conversation is reproduced here.
+
+cue-1
+00:00:00.000 --> 00:00:02.000 align:start position:10%
+<v Alice>Welcome to the synthetic demo.
+
+cue-2
+00:00:02.000 --> 00:00:05.500
+Bob: The numbers are made up.
+They are only here to exercise the parser.
+
+cue-3
+00:00:05.500 --> 00:00:06.000

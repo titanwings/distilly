@@ -1,0 +1,10 @@
+_config_version: 33
+mcp_servers:
+  distilly:
+    command: $W
+    connect_timeout: 20.0
+    enabled: true
+    bogus_key: 1
+    tools:
+      resources: false
+      prompts: false

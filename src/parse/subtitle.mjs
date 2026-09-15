@@ -35,6 +35,33 @@ function pad(value, width) {
 }
 
 /**
+ * Split text into lines like `String.prototype.split("\n")`, but with two
+ * differences that matter for byte accounting and for timecode matching:
+ *
+ *  - a terminal `\r` is part of the separator, so it never reaches a regex and
+ *    never lands in the anchored text;
+ *  - every line keeps the *original* character offsets of its content, so a byte
+ *    range derived from a line is still exact for a CRLF payload.
+ */
+function splitLines(text) {
+  const lines = [];
+  let index = 0;
+  while (index <= text.length) {
+    const newline = text.indexOf("\n", index);
+    if (newline === -1) {
+      const end = text.length;
+      const contentEnd = end > index && text[end - 1] === "\r" ? end - 1 : end;
+      lines.push({ text: text.slice(index, contentEnd), start: index, end: contentEnd, terminatorEnd: end });
+      break;
+    }
+    const contentEnd = newline > index && text[newline - 1] === "\r" ? newline - 1 : newline;
+    lines.push({ text: text.slice(index, contentEnd), start: index, end: contentEnd, terminatorEnd: newline + 1 });
+    index = newline + 1;
+  }
+  return { lines, text };
+}
+
+/**
  * Parse a timecode into milliseconds, or `null` when it is not a timecode.
  * Both `.` and `,` are accepted as the decimal separator (`.srt` in the wild uses
  * both), and hours are optional in WebVTT.
@@ -73,26 +100,27 @@ export function formatTimecode(millis) {
  */
 export function detectSubtitleFormat(file) {
   const reasons = [];
-  const head = file.text.replace(/^\uFEFF/, "");
+  const { lines } = splitLines(file.text);
+  const head = lines[0]?.text ?? "";
 
-  if (/^\s*WEBVTT[\s(]/.test(head) || /^\s*WEBVTT\s*$/.test(head.split("\n")[0] ?? "")) {
+  if (/^\uFEFF?WEBVTT(?:[\s(]|$)/.test(head)) {
     reasons.push("payload starts with the WEBVTT signature");
     return { format: "vtt", reasons };
   }
-  if (file.name.toLowerCase().endsWith(".vtt") && VTT_TIMECODE.test(head.split("\n").find((line) => VTT_TIMECODE.test(line)) ?? "")) {
-    reasons.push(".vtt extension and a WebVTT timecode");
-    return { format: "vtt", reasons };
-  }
-  const lines = head.split("\n");
-  const srtLines = lines.filter((line) => SRT_TIMECODE.test(line));
-  if (srtLines.length > 0) {
-    reasons.push(`${srtLines.length} SubRip timecode line(s)`);
-    return { format: "srt", reasons };
-  }
-  const vttLines = lines.filter((line) => VTT_TIMECODE.test(line));
+
+  // SubRip requires a comma before the milliseconds; WebVTT requires a dot. The
+  // order matters because a WebVTT timecode also matches the lenient SubRip
+  // pattern, and a `.vtt` without its header must not be read as SubRip.
+  const vttLines = lines.filter((line) => VTT_TIMECODE.test(line.text));
   if (vttLines.length > 0) {
     reasons.push(`${vttLines.length} WebVTT timecode line(s) without a WEBVTT header`);
     return { format: "vtt", reasons };
+  }
+
+  const srtLines = lines.filter((line) => SRT_TIMECODE.test(line.text));
+  if (srtLines.length > 0) {
+    reasons.push(`${srtLines.length} SubRip timecode line(s)`);
+    return { format: "srt", reasons };
   }
 
   throw new UnrecognizedFormatError(
@@ -111,22 +139,9 @@ export function detectSubtitleFormat(file) {
  * @returns {{cues: Array<object>, warnings: string[], indexProblems: string[]}}
  */
 export function splitCues(file, format) {
-  const text = file.text.replace(/^\uFEFF/, "");
-  const bomOffset = file.text.length - text.length;
+  const text = file.text;
   const matcher = format === "vtt" ? VTT_TIMECODE : SRT_TIMECODE;
-  const lines = [];
-  {
-    let cursor = 0;
-    while (cursor <= text.length) {
-      const newline = text.indexOf("\n", cursor);
-      if (newline === -1) {
-        lines.push({ text: text.slice(cursor), start: cursor, end: text.length });
-        break;
-      }
-      lines.push({ text: text.slice(cursor, newline), start: cursor, end: newline });
-      cursor = newline + 1;
-    }
-  }
+  const { lines } = splitLines(text);
 
   const cueStarts = [];
   for (let index = 0; index < lines.length; index += 1) {
@@ -151,18 +166,28 @@ export function splitCues(file, format) {
       : ((Number(match[5]) * 3600 + Number(match[6]) * 60 + Number(match[7])) * 1000) + Number(match[8].padEnd(3, "0"));
     const settings = isVtt ? (match[9] ?? "").trim() : "";
 
-    // The index line (SubRip) or the cue identifier (WebVTT) sits directly above.
+    // The index line (SubRip) or the cue identifier (WebVTT) sits directly above
+    // the timecode, so the body must stop before it — otherwise cue N swallows
+    // cue N+1's index (and a cue identifier is silent data loss).
     let indexLine = null;
+    let indexLineText = null;
     if (lineIndex > 0) {
       const candidate = lines[lineIndex - 1].text.trim();
-      if (candidate !== "" && !TIMECODE_ANY.test(candidate) && !/^NOTE\b/.test(candidate)) indexLine = candidate;
+      if (candidate !== "" && !TIMECODE_ANY.test(candidate) && !/^NOTE\b/.test(candidate)) {
+        indexLine = candidate;
+        indexLineText = lines[lineIndex - 1];
+      }
     }
+    const nextLineIndex = position + 1 < cueStarts.length ? cueStarts[position + 1] : lines.length;
+    const lastBodyLine = nextLineIndex - 1 - (nextLineIndex < lines.length && indexLineText ? 1 : 0);
 
     const bodyStartLine = lineIndex + 1;
-    const bodyEndLine = (position + 1 < cueStarts.length ? cueStarts[position + 1] : lines.length) - 1;
     const bodyLines = [];
-    for (let cursor = bodyStartLine; cursor <= bodyEndLine && cursor < lines.length; cursor += 1) {
-      bodyLines.push(lines[cursor]);
+    for (let cursor = bodyStartLine; cursor <= lastBodyLine && cursor < lines.length; cursor += 1) {
+      const line = lines[cursor];
+      if (line.text.trim() === "" && cursor > bodyStartLine + 1) break;
+      if (/^\s*NOTE\b/.test(line.text) || /^\s*STYLE\b/.test(line.text)) break;
+      bodyLines.push(line);
     }
 
     const rawLines = bodyLines.map((line) => line.text);
@@ -185,8 +210,15 @@ export function splitCues(file, format) {
       }
     }
 
-    const byteStart = file.charToByte(bomOffset + lines[lineIndex].start);
-    const byteEnd = file.charToByte(bomOffset + (bodyLines.length > 0 ? bodyLines[bodyLines.length - 1].end : lines[lineIndex].end));
+    const lastBody = bodyLines.length > 0 ? bodyLines[bodyLines.length - 1] : lines[lineIndex];
+    // The byte range covers the timecode line through the terminator of the last
+    // line of cue text: enough to show where the cue came from, and nothing that
+    // belongs to the next cue.
+    // A cue owns its identifier line too: the SubRip index or the WebVTT cue
+    // name is part of what identifies the cue in the file.
+    const firstLine = indexLineText && indexLineText.start < lines[lineIndex].start ? indexLineText : lines[lineIndex];
+    const byteStart = file.charToByte(firstLine.start);
+    const byteEnd = file.charToByte(lastBody.terminatorEnd);
 
     if (indexLine !== null && /^\d+$/.test(indexLine)) {
       const numeric = Number(indexLine);
@@ -217,8 +249,8 @@ export function splitCues(file, format) {
       speakerSource,
       text: body,
       line: lineIndex + 1,
-      charStart: bomOffset + lines[lineIndex].start,
-      charEnd: bomOffset + (bodyLines.length > 0 ? bodyLines[bodyLines.length - 1].end : lines[lineIndex].end),
+      charStart: firstLine.start,
+      charEnd: lastBody.terminatorEnd,
       byteStart,
       byteEnd,
     });
@@ -269,7 +301,9 @@ export function parseSubtitle(file, options = {}) {
       charStart: cue.charStart,
       charEnd: cue.charEnd,
       kind: "cue",
-      label: cue.speaker ? `${cue.speaker} @ ${formatTimecode(cue.start)}` : formatTimecode(cue.start),
+      label: cue.speaker
+        ? `cue ${cue.index} · ${cue.speaker} @ ${formatTimecode(cue.start)}`
+        : `cue ${cue.index} @ ${formatTimecode(cue.start)}`,
     })),
   );
 
@@ -317,3 +351,4 @@ export function parseSubtitle(file, options = {}) {
       : [],
   });
 }
+

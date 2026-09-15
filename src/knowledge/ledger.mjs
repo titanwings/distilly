@@ -156,7 +156,7 @@ export function saveLedger(store, ledger) {
 /** Highest allocated numeric suffix, so ids never go backwards. */
 export function lastId(ledger) {
   let highest = 0;
-  for (const entry of ledger.entries) {
+  for (const entry of ledger) {
     const parsed = parseAnchor(entry?.id);
     if (parsed && parsed.index > highest) highest = parsed.index;
   }
@@ -168,19 +168,19 @@ export function nextId(ledger) {
 }
 
 export function findEntry(ledger, predicate) {
-  return ledger.entries.find(predicate) ?? null;
+  return ledger.find(predicate) ?? null;
 }
 
 /** Look up by `k00NN`. */
 export function getEntry(ledger, id) {
   const parsed = parseAnchor(id);
   if (!parsed) return null;
-  return ledger.entries.find((entry) => entry.id === parsed.id) ?? null;
+  return ledger.find((entry) => entry.id === parsed.id) ?? null;
 }
 
 /** Find the entry that recorded these exact bytes. */
 export function findBySha256(ledger, sha256) {
-  return ledger.entries.filter((entry) => entry.sha256 === sha256);
+  return ledger.filter((entry) => entry.sha256 === sha256);
 }
 
 /**
@@ -190,12 +190,35 @@ export function findBySha256(ledger, sha256) {
  */
 export function anchorIndex(ledger) {
   const index = new Set();
-  for (const entry of ledger.entries) {
+  for (const entry of ledger) {
     index.add(entry.id);
-    for (const unit of entry.units ?? []) index.add(unit.anchor ?? `${entry.id}`);
-    for (const sub of entry.anchors ?? []) index.add(sub.anchor);
+    for (const unit of entry.units ?? []) index.add(unit.anchor ?? entry.id);
+    for (const anchor of entry.anchors ?? []) {
+      index.add(typeof anchor === "string" ? anchor : anchor.anchor ?? anchor.id);
+    }
   }
   return index;
+}
+
+/**
+ * Anchor id → entry, so a citation like `k0009` (which is the *second* paragraph
+ * of entry `k0008`) can still be resolved without scanning every entry.
+ * @returns {Map<string, object>}
+ */
+export function anchorOwners(ledger) {
+  const owners = new Map();
+  for (const entry of ledger) {
+    owners.set(entry.id, entry);
+    for (const unit of entry.units ?? []) {
+      if (unit.anchor) owners.set(unit.anchor, entry);
+      if (unit.id && !owners.has(unit.id)) owners.set(unit.id, entry);
+    }
+    for (const anchor of entry.anchors ?? []) {
+      const id = typeof anchor === "string" ? anchor : anchor.anchor ?? anchor.id;
+      if (id && !owners.has(id)) owners.set(id, entry);
+    }
+  }
+  return owners;
 }
 
 /**
@@ -206,24 +229,32 @@ export function anchorIndex(ledger) {
 export function resolveLedgerAnchor(ledger, anchor) {
   const parsed = parseAnchor(anchor);
   if (!parsed) return null;
-  const entry = getEntry(ledger, parsed.id);
+  const entry = anchorOwners(ledger).get(parsed.id) ?? null;
   if (!entry) return null;
 
-  if (parsed.kind === "sub") {
-    const sub = (entry.anchors ?? []).find((candidate) => candidate.anchor === anchor);
-    if (!sub) return null;
+  // `anchors` is a string list (the shape the integrity gate reads);
+  // `anchor_detail` carries the text and byte range. Fall back to the string list
+  // so an entry written by another producer still resolves.
+  const detail = (entry.anchor_detail ?? []).find((candidate) => (candidate.anchor ?? candidate.id) === anchor);
+  if (detail) {
     return {
       entry,
       anchor,
-      kind: sub.kind ?? "item",
-      text: sub.text ?? "",
-      byteStart: sub.byteStart ?? null,
-      byteEnd: sub.byteEnd ?? null,
-      file: sub.file ?? null,
+      kind: detail.kind ?? "item",
+      text: detail.text ?? "",
+      byteStart: detail.byteStart ?? null,
+      byteEnd: detail.byteEnd ?? null,
+      file: detail.file ?? null,
     };
   }
+  const listed = (entry.anchors ?? []).some((candidate) =>
+    typeof candidate === "string" ? candidate === anchor : candidate.anchor === anchor || candidate.id === anchor,
+  );
+  if (listed) {
+    return { entry, anchor, kind: "item", text: "", byteStart: null, byteEnd: null, file: null };
+  }
 
-  const unit = (entry.units ?? []).find((candidate) => candidate.anchor === anchor);
+  const unit = (entry.units ?? []).find((candidate) => candidate.anchor === anchor || candidate.id === anchor);
   if (!unit) return null;
   return {
     entry,
@@ -260,7 +291,11 @@ export function buildEntry(document, options = {}) {
   if (rawFiles.length === 0) throw new TypeError(`entry ${id} has no raw files`);
 
   const primary = rawFiles[0];
-  const origin = options.origin ?? document.origin ?? primary.path;
+  // The origin is the *stored* location (`raw/<source>/<name>`), not where the
+  // file happened to sit on the user's disk: it is stable, it survives a move of
+  // the checkout, and it is what makes "same bytes, same bucket" a meaningful
+  // deduplication rule.
+  const origin = options.origin ?? primary.relativePath ?? document.origin ?? primary.path;
   const fetchedAt = document.fetched_at ?? options.fetched_at ?? null;
   if (!fetchedAt) {
     throw new TypeError(`entry ${id} needs fetched_at — pass it explicitly so runs stay deterministic`);
@@ -280,6 +315,7 @@ export function buildEntry(document, options = {}) {
     warnings,
     files: rawFiles.map((file) => ({
       path: file.relativePath ?? file.path,
+      sourcePath: file.path ?? null,
       bytes: file.bytes ?? 0,
       sha256: file.sha256 ?? null,
       encoding: file.encoding ?? null,
@@ -301,12 +337,14 @@ export function buildEntry(document, options = {}) {
       byteEnd: unit.byteEnd,
       file: unit.file ?? primary.relativePath ?? primary.path,
     })),
-    // `anchors` carries *every* anchor this entry owns — the paragraph anchors
-    // plus the per-turn/cue/message sub-anchors — because that is the list the
-    // anchor-integrity gate (`scripts/acceptance.mjs`, `doctor`) reads. Elements
-    // are objects with `id`; `anchor` is the same value kept for old callers.
-    anchors: (document.anchors ?? []).map((anchor) => ({
-      id: anchor.anchor ?? anchor.id,
+    // `anchors` is a flat list of anchor **strings** — the shape
+    // `scripts/acceptance.mjs` and `view check` read (`ledger.flatMap(e => e.anchors)`
+    // then `new Set(...)`). It holds this entry's whole namespace: the paragraph
+    // anchors `[k00NN]` plus the per-turn/cue/message sub-anchors `[k00NN:tM]`.
+    anchors: [...new Set((document.anchors ?? []).map((anchor) => anchor.anchor ?? anchor.id))],
+    // `anchor_detail` keeps what a string cannot: the text and the raw byte
+    // range each anchor resolves to. Same order as `anchors`.
+    anchor_detail: (document.anchors ?? []).map((anchor) => ({
       anchor: anchor.anchor ?? anchor.id,
       kind: anchor.kind,
       text: anchor.text,
@@ -315,17 +353,27 @@ export function buildEntry(document, options = {}) {
       file: anchor.file ?? primary.relativePath ?? primary.path,
       ...(anchor.label ? { label: anchor.label } : {}),
     })),
-    imports: 1,
+    first_seen: fetchedAt,
   };
+}
+
+/**
+ * Two origins are the same when both sides name one and the names match. An
+ * entry without an origin can never be called a duplicate: "I do not know where
+ * this came from" is not the same claim as "I know, and it is the same place".
+ */
+function sameOrigin(a, b) {
+  if (typeof a !== "string" || typeof b !== "string") return false;
+  if (a === "" || b === "") return false;
+  return a === b;
 }
 
 /**
  * Append `entry` to `ledger` unless its bytes are already recorded.
  *
  * Idempotency rule: same `sha256` (and, when both sides declare one, same
- * `origin`) ⇒ no new entry. The existing entry keeps its id and `fetched_at`
- * — the clock is never re-read, which is exactly what makes a second harvest
- * produce byte-identical `index.json`.
+ * `origin`) ⇒ no new entry. The existing entry is returned untouched — not even
+ * a counter is bumped, because the ledger has to hash identically on a re-run.
  *
  * @param {object} ledger
  * @param {object} entry
@@ -333,14 +381,11 @@ export function buildEntry(document, options = {}) {
  * @returns {{entry: object, appended: boolean, duplicateOf: object|null, reason: string}}
  */
 export function appendEntry(ledger, entry, options = {}) {
-  const existing = ledger.entries.find(
-    (candidate) =>
-      candidate.sha256 === entry.sha256 &&
-      (candidate.origin === entry.origin || !entry.origin || !candidate.origin),
+  const existing = ledger.find(
+    (candidate) => candidate.sha256 === entry.sha256 && sameOrigin(candidate.origin, entry.origin),
   );
 
   if (existing && !options.allowDuplicate) {
-    existing.imports = (existing.imports ?? 1) + 1;
     return {
       entry: existing,
       appended: false,
@@ -349,7 +394,7 @@ export function appendEntry(ledger, entry, options = {}) {
     };
   }
 
-  ledger.entries.push(entry);
+  ledger.push(entry);
   return { entry, appended: true, duplicateOf: null, reason: "new content recorded" };
 }
 
@@ -426,21 +471,34 @@ export function recordDocument(store, ledger, document, options = {}) {
   // is re-chunked.
   const primaryUnit = anchored.units[0] ?? { anchor: id, id: ledgerIndex, byteStart: 0, byteEnd: 0 };
 
+  // Map the assembled content back to raw bytes, so a record's `[k00NN:tM]`
+  // anchor can report the exact span of the turn/cue/message it names rather
+  // than just the paragraph that contains it.
   const seen = new Map();
-  const subAnchors = (document.entries ?? []).map((entry) => {
-    const key = entry.file ?? storedFiles[0]?.name ?? null;
+  const subAnchors = (document.entries ?? []).map((record, index) => {
+    const key = record.file ?? storedFiles[0]?.name ?? null;
     const ordinal = (seen.get(key) ?? 0) + 1;
     seen.set(key, ordinal);
+    // The parser's own byte span is authoritative. `recordDocument` never
+    // invents one: a record whose text was reconstructed (an inflated OOXML
+    // member, a stripped HTML body) reports `null` and is flagged instead.
+    const segment = document.segments?.[index];
+    const byteStart = record.byteStart ?? segment?.byteStart ?? null;
+    const byteEnd = record.byteEnd ?? segment?.byteEnd ?? null;
+    const derived = byteStart === null || byteEnd === null;
+    const anchor = formatSubAnchor(id, ordinal);
     return {
-      kind: entry.kind ?? "item",
-      text: entry.text,
-      anchor: formatSubAnchor(id, ordinal),
-      id: formatSubAnchor(id, ordinal),
+      kind: record.kind ?? "item",
+      text: record.text,
+      anchor,
+      id: anchor,
       index: ordinal,
-      byteStart: entry.byteStart ?? null,
-      byteEnd: entry.byteEnd ?? null,
-      file: entry.file ?? storedFiles[0]?.name ?? null,
-      label: entry.label ?? null,
+      byteStart,
+      byteEnd,
+      file: record.file ?? storedFiles[0]?.name ?? null,
+      label: record.label ?? null,
+      ...(derived ? { derivedSpan: true } : {}),
+      ...(record.synthetic ? { synthetic: true } : {}),
     };
   });
 
@@ -568,7 +626,7 @@ export function ledgerStats(ledger) {
   let bytes = 0;
   let warnings = 0;
   let anchors = 0;
-  for (const entry of ledger.entries) {
+  for (const entry of ledger) {
     byKind[entry.kind] = (byKind[entry.kind] ?? 0) + 1;
     byMethod[entry.method] = (byMethod[entry.method] ?? 0) + 1;
     bytes += entry.bytes ?? 0;
@@ -576,14 +634,15 @@ export function ledgerStats(ledger) {
     anchors += (entry.units ?? []).length + (entry.anchors ?? []).length;
   }
   return {
-    entries: ledger.entries.length,
+    entries: ledger.length,
     bytes,
     anchors,
     warnings,
-    credentialed: ledger.entries.filter((entry) => entry.credentialed).length,
+    credentialed: ledger.filter((entry) => entry.credentialed).length,
     byKind,
     byMethod,
   };
 }
 
 export { KnowledgeStore };
+

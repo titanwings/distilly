@@ -236,3 +236,4 @@ Turn the `persona_analyzer.md` output plus the user's manual tags into the `pers
 - Which files were created or updated, each with its sha256 (from the `distilly` `--json` receipt or `knowledge/index.json`).
 - Which channels were unavailable (`unavailable[]`).
 - Which layers are thin, which steps were skipped, and why.
+

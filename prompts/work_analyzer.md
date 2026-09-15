@@ -249,3 +249,4 @@ Principle: work content only, ignore small talk, never infer — write only what
 - Which files were created or updated, each with its sha256 (from the `distilly` `--json` receipt or `knowledge/index.json`).
 - Which channels were unavailable (`unavailable[]`).
 - Which dimensions are thin, which steps were skipped, and why.
+

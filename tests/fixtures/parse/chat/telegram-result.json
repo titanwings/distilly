@@ -1,0 +1,11 @@
+{
+  "name": "Synthetic team chat",
+  "type": "private_group",
+  "id": 123456789,
+  "messages": [
+    { "id": 1, "type": "service", "date": "2024-03-01T09:00:00", "actor": "Alice Example", "action": "join_group_by_link" },
+    { "id": 2, "type": "message", "date": "2024-03-01T09:05:00", "date_unixtime": "1709283900", "from": "Alice Example", "from_id": "user1", "text": "The parser must never guess a speaker." },
+    { "id": 3, "type": "message", "date": "2024-03-01T09:06:00", "date_unixtime": "1709283960", "from": "Bob Sample", "from_id": "user2", "text": [ "It should ", { "type": "bold", "text": "refuse" }, " instead." ] },
+    { "id": 4, "type": "message", "date": "2024-03-01T09:07:00", "date_unixtime": "1709284020", "from": "Bob Sample", "from_id": "user2", "text": "" }
+  ]
+}

@@ -159,3 +159,4 @@ if (failed) {
   for (const r of results.filter((x) => !x.ok)) console.log(`  - ${r.name}: ${r.detail}`);
   process.exit(1);
 }
+

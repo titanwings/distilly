@@ -23,8 +23,8 @@
  *    `*.json`, `*.csv`, and the subtitle/`.txt` attachments Takeout ships.
  *  - **Discord** — `messages/*.json` + `channels.json` + `users.json`
  *    (`account.json` marks the export owner).
- *  - **Telegram** — `result.json` (or `chats/*/messages*.json`).
- *  - **Instagram / Facebook** — `messages/inbox/*/message_*.json`,
+ *  - **Telegram** — `result.json` (or `chats/*\/messages*.json`).
+ *  - **Instagram / Facebook** — `messages/inbox/*\/message_*.json`,
  *    `content/posts_1.json`, `your_instagram_activity/**`.
  *  - **LinkedIn** — `Connections.csv`, `Messages.csv`, `Invitations.csv`.
  */
