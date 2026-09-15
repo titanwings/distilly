@@ -25,7 +25,43 @@
 
 ---
 
+<a id="v2-hosts"></a>
+
+## v2：命令入口与宿主适配
+
+v2 只有一个命令入口：**`bin/distilly.mjs`**（Node ≥ 20，零依赖，见 `docs/v2/CONTRACT.md`）。
+
+```bash
+node bin/distilly.mjs install <host>           # 装到该宿主的全局 Skill 目录
+node bin/distilly.mjs install <host> --force   # 已有安装先备份成 *.backup-<时间戳> 再替换
+node bin/distilly.mjs install --path <p>       # 装到自定义路径（末段目录必须叫 distilly）
+node bin/distilly.mjs --help
+```
+
+- **宿主 id、全局/项目级目录、确切安装命令、双语注意事项、装完怎么验证**：见
+  **[docs/v2/HOSTS.md](docs/v2/HOSTS.md)**。该表由 `src/hosts/agents.mjs` 生成，`tests/agents.test.mjs`
+  强制它与 `bin/distilly.mjs` 的落盘目录一致。
+- 当前支持 8 个宿主：`claude-code` · `codex` · `opencode` · `openclaw` · `hermes` · `deepseek-harness` ·
+  `grok-build` · `pi`。别名：`claude`、`deepseek`、`grok`。
+- 两条路线等价：`npx -y skills add titanwings/distilly --skill distilly …`（AgentSkills CLI）或直接
+  `git clone https://github.com/titanwings/distilly <目标目录>`；逐字命令同样在 `docs/v2/HOSTS.md`。
+
+<a id="deprecated-python-installers"></a>
+
+### ⚠️ Deprecated：`python3 tools/*.py` 安装器
+
+下面「选择你的平台」各节里的 `python3 tools/install_*_skill.py` 与手工 `git clone` 是**迁移期兼容路径，已废弃**：
+v2 不再要求用户手动跑 Python。契约（`docs/v2/CONTRACT.md` §1）约定旧的 `python3 tools/xxx.py` 调用由
+`bin/distilly.mjs` 转发并打印 deprecation 警告，转发层在 PR③ 删除；在当前集成分支上这些命令仍然等价于
+直接执行对应的 Python 脚本。旧内容只为排查老安装而保留，**新安装请走 `bin/distilly.mjs` 或
+`docs/v2/HOSTS.md` 里的一行命令**。
+
+---
+
 ## 选择你的平台
+
+> ⚠️ **Deprecated（旧安装路径）**：本节保留旧版按平台展开的说明。宿主目录与确切命令的最新版本在
+> **[docs/v2/HOSTS.md](docs/v2/HOSTS.md)**；下面的 `python3 tools/*.py` 调用见上一节的废弃说明。
 
 ### A. Claude Code（推荐）
 
@@ -533,3 +569,4 @@ distilly/               ← clone 到宿主的 skills/distilly/（例如 .claude
             ├── versions/       # 历史版本
             └── knowledge/      # 原始材料归档
 ```
+
