@@ -12,7 +12,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -216,7 +216,10 @@ test("the version manager rejects slug and version traversal", () => {
       cwd: root,
     });
     assert.notEqual(traversal.status, 0);
-    assert.equal(readFileSync(join(victimVersions, "..", "..", "skills", "victim", "versions")) ? 11 : 0, 11);
+    // The refused traversal must not have touched the other skill. The old form of
+    // this assertion pointed at `<root>/skills/skills/victim/versions` (one `skills/`
+    // too many) and called `readFileSync` on a directory, so it could never pass.
+    assert.equal(readdirSync(victimVersions).length, 11, "the refused traversal must leave the other skill alone");
 
     const create = runCmd(["skill", "create", "--slug", "safe", "--name", "Safe", "--base-dir", baseDir], {
       cwd: root,

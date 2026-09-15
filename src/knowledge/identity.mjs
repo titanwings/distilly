@@ -93,13 +93,19 @@ export function canonicalSpeaker(speaker, identity) {
 export function applyIdentity(document, identity) {
   if (!identity || identity.map.size === 0) return { document, changed: 0, matched: [] };
   const matched = new Set();
-  let changed = 0;
+  // Distinct handles, not occurrences: a turn appears in both `segments` and
+  // `entries`, so counting each rewrite reported the same person twice — and
+  // `changed` is read as "how many turns this map rewrote".
+  const changedHandles = new Set();
   const rewrite = (record) => {
     if (!record || typeof record !== "object") return record;
     const canonical = canonicalSpeaker(record.speaker, identity);
     if (canonical === record.speaker) return record;
-    if (record.speaker !== null && record.speaker !== undefined) matched.add(String(record.speaker).trim());
-    changed += 1;
+    if (record.speaker !== null && record.speaker !== undefined) {
+      const handle = String(record.speaker).trim();
+      matched.add(handle);
+      changedHandles.add(handle);
+    }
     return { ...record, speaker: canonical };
   };
   return {
@@ -108,7 +114,7 @@ export function applyIdentity(document, identity) {
       segments: (document.segments ?? []).map(rewrite),
       entries: (document.entries ?? []).map(rewrite),
     },
-    changed,
+    changed: changedHandles.size,
     matched: [...matched].sort(),
   };
 }

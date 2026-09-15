@@ -187,8 +187,11 @@ test("the work-only skill replaces the persona handoff", () => {
 
     assert.match(zhStoredWork, new RegExp(zhHandoff));
     assert.match(zhCombined, new RegExp(zhHandoff));
-    assert.match(enStoredWork, new RegExp(enHandoff));
-    assert.match(enCombined, new RegExp(enHandoff));
+    // Literal containment, not `new RegExp(enHandoff)`: the sentence contains
+    // parentheses, so the regex treated "(see the Persona section)" as a capture
+    // group and could never match the text it was written to look for.
+    assert.ok(enStoredWork.includes(enHandoff), `work.md must keep the handoff verbatim:\n${enStoredWork}`);
+    assert.ok(enCombined.includes(enHandoff), `SKILL.md must keep the handoff verbatim:\n${enCombined}`);
     assert.equal(zhWorkSkill.includes(zhHandoff), false);
     assert.equal(enWorkSkill.includes(enHandoff), false);
     assert.match(enWorkSkill, /If asked outside your recorded responsibilities:/);

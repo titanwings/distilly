@@ -19,7 +19,11 @@ import { PLANNED, resolveCommand } from "../src/commands/index.mjs";
 const here = dirname(fileURLToPath(import.meta.url));
 const CHAT = join(here, "fixtures", "parse", "chat", "chatgpt-conversations.json");
 const SLACK = join(here, "fixtures", "parse", "chat", "slack-messages.json");
-const SLACK_USERS = join(here, "fixtures", "parse", "chat", "slack-users.json");
+// A Slack export ships its display-name table as `users.json` next to the channel
+// file. The fixture directory keeps a second copy under `slack-users.json` for the
+// tests that pass `--users` explicitly, but the sibling rule has to be exercised
+// through the name a real export uses.
+const SLACK_USERS = join(here, "fixtures", "parse", "chat", "users.json");
 const SUBTITLE = join(here, "fixtures", "parse", "subtitle", "interview.srt");
 
 function tempRoot() {
