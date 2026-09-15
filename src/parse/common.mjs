@@ -558,7 +558,10 @@ export function findObjectArray(value, requiredKeys, options = {}) {
       if (
         current.length >= minLength &&
         current.every((item) => item && typeof item === "object" && !Array.isArray(item)) &&
-        current.some((item) => requiredKeys.some((key) => key in item))
+        // "required" means all of them, on every item. `some` made the Instagram
+        // check (`sender_name` + `timestamp_ms`) match any Slack/Feishu export that
+        // merely carried `sender_name`, so Instagram claimed other people's shapes.
+        current.every((item) => requiredKeys.every((key) => key in item))
       ) {
         return { items: current, path };
       }

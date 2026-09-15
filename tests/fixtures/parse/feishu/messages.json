@@ -1,0 +1,43 @@
+[
+  {
+    "message_id": "om_1",
+    "sender_name": "张三",
+    "content": "这个方案我同意，但灰度要分批。",
+    "timestamp": "2024-03-01T10:00:00Z"
+  },
+  {
+    "message_id": "om_2",
+    "sender": {
+      "name": "李四"
+    },
+    "content": {
+      "text": "收到"
+    },
+    "create_time": "2024-03-01T10:01:00Z"
+  },
+  {
+    "message_id": "om_3",
+    "sender_name": "张三",
+    "content": [
+      {
+        "text": "第一部分"
+      },
+      {
+        "text": "第二部分"
+      }
+    ],
+    "time": "2024-03-01T10:02:00Z"
+  },
+  {
+    "message_id": "om_4",
+    "sender_name": "张三",
+    "content": "[图片]",
+    "timestamp": "2024-03-01T10:03:00Z"
+  },
+  {
+    "message_id": "om_5",
+    "sender": "王五",
+    "message": "先看数据，再看日志。",
+    "timestamp": "2024-03-01T10:04:00Z"
+  }
+]

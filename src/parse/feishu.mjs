@@ -105,24 +105,27 @@ export function detectFeishuFormat(file) {
   try {
     parsed = JSON.parse(text.trim().replace(/^\uFEFF/, ""));
   } catch (error) {
-    throw new Error(`${file.label} is not a Feishu export: ${error.message}`);
+    return { format: null, reasons: [`JSON is not parseable: ${error.message}`] };
   }
   const items = unwrap(parsed);
   if (!items || items.length === 0) {
-    throw new Error(`${file.label} is not a Feishu export: expected a message array (or messages/records/data)`);
+    return { format: null, reasons: ["JSON root holds no message array (messages/records/data)"] };
   }
   const objects = items.filter((item) => item && typeof item === "object");
   if (objects.length === 0) {
-    throw new Error(`${file.label} is not a Feishu export: the array holds no message objects`);
+    return { format: null, reasons: ["the array holds no message objects"] };
   }
   const keys = new Set(objects.slice(0, 20).flatMap((item) => Object.keys(item)));
   const hasSender = SENDER_KEYS.some((key) => keys.has(key));
   const hasContent = CONTENT_KEYS.some((key) => keys.has(key));
   if (!hasSender || !hasContent) {
-    throw new Error(
-      `${file.label} is not a Feishu export: entries carry {${[...keys].slice(0, 8).join(", ")}}; ` +
-        `expected a sender field (${SENDER_KEYS.join("/")}) and a content field (${CONTENT_KEYS.join("/")})`,
-    );
+    return {
+      format: null,
+      reasons: [
+        `entries carry {${[...keys].slice(0, 8).join(", ")}}; expected a sender field ` +
+          `(${SENDER_KEYS.join("/")}) and a content field (${CONTENT_KEYS.join("/")})`,
+      ],
+    };
   }
   reasons.push(`array of message objects with ${SENDER_KEYS.filter((key) => keys.has(key)).join("/")} + ${CONTENT_KEYS.filter((key) => keys.has(key)).join("/")}`);
   return { format: "feishu-export", reasons, value: items };
@@ -136,6 +139,12 @@ export function parseFeishu(file, options = {}) {
   const detected = options.format
     ? { format: options.format, reasons: ["format supplied by the caller"], value: undefined }
     : detectFeishuFormat(file);
+  // The detector answers "this is not Feishu" by returning `format: null`; the
+  // refusal belongs here, where the caller asked for a parse. Without this guard
+  // the loop below would run over `undefined` and throw a TypeError instead.
+  if (detected.format === null) {
+    throw new Error(`${file.label} is not a Feishu export: ${(detected.reasons ?? []).join("; ") || "unrecognised shape"}`);
+  }
   const warnings = [];
 
   const spans = [];

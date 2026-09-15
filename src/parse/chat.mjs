@@ -248,6 +248,22 @@ export function detectChatFormat(file) {
       if (participants) reasons.push(`conversation lists participants: ${participants.participants.map((p) => p?.name).filter(Boolean).join(", ")}`);
       return { format: "instagram-messages", reasons, value, shape };
     }
+
+    // ---- Feishu exports, claimed last --------------------------------
+    // Feishu and Instagram both carry `sender_name`; Instagram is claimed above on
+    // `timestamp_ms`, which Feishu does not use. Claiming Feishu any earlier would
+    // swallow Instagram exports, so this case deliberately sits at the end.
+    const FEISHU_SENDERS = ["sender_name", "sender", "from", "user_name"];
+    const FEISHU_CONTENTS = ["content", "text", "message", "body"];
+    const hasFeishuSender = objects.some((item) => FEISHU_SENDERS.some((key) => key in item));
+    const hasFeishuContent = objects.some((item) => FEISHU_CONTENTS.some((key) => key in item));
+    if (objects.length > 0 && hasFeishuSender && hasFeishuContent) {
+      reasons.push(
+        `array of message objects with ${FEISHU_SENDERS.filter((key) => keys.has(key)).join("/")} + ` +
+          `${FEISHU_CONTENTS.filter((key) => keys.has(key)).join("/")} (Feishu export)`,
+      );
+      return { format: "feishu-export", reasons, value, shape };
+    }
   } else {
     // ---- object-rooted containers -------------------------------------
     const nested = pick(value, ["conversations", "chats", "messages", "records", "data"]);
