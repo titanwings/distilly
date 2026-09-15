@@ -928,6 +928,10 @@ export function parseChat(file, options = {}) {
     // read, the credentialed collectors name the API route and the credential file.
     // Hardcoding these made every collection look like a local user export and
     // dropped the credential provenance entirely.
+    // The caller knows how it obtained the bytes: `harvest` labels the directory it
+    // read, the credentialed collectors name their channel (so raw bytes land under
+    // `raw/discord/…`). Hardcoding these made every collection look like a local
+    // user export and dropped the credential provenance entirely.
     method: options.method ?? "user-export",
     source: options.source ?? "chat",
     ...(options.credentialed === undefined ? {} : { credentialed: options.credentialed }),

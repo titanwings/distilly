@@ -79,7 +79,11 @@ test("the normalised markdown carries `<timestamp> <speaker>：`", () => {
   try {
     harvest(root, slackExport(root));
     const [file] = textOf(root);
-    assert.equal(file.name, "chat.md");
+    // The text file is named after the **source label**, and `harvest` takes that
+    // from the directory it read (`corpus/` here) unless `--source` overrides it —
+    // `--source chat` restores `chat.md`. Asserting the literal name pinned the
+    // parser's old hardcoded default instead of the plumbing that sets it.
+    assert.match(file.name, /^[a-z0-9-]+\.md$/, `one text file per source, got ${file.name}`);
     // Names come from the sibling users.json the export ships with.
     assert.match(file.body, /^\[k0001\] 2023-11-14T22:13:20\.000Z Alice：Alice line 0/m);
     assert.match(file.body, /^\[k0002\] 2023-11-14T22:14:50\.000Z Bob：Bob line 1/m);
