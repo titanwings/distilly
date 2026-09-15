@@ -168,3 +168,54 @@ $ node scripts/generate-template.mjs --check  # 无漂移 sha256 d85dbfb4…
 - **账本里 turn 锚点的 `file` 字段是裸文件名**（段落锚点是可解析的 `raw/...` 路径）。
   当前无害（`locations.raw` 才是指针，派生输出引用 0 个 turn 锚点），但消费者按
   `anchor_detail[].file` 解析会失败。
+
+## 6. 更正：这一版把 CI 修绿了吗？没有
+
+本节是事后补记，事实与上面的结论相反，保留原文以便对照。
+
+上面把 `scripts.test` 定成 `node --test "tests/*.test.mjs"`，并在本机（Node 22）验证
+通过。**CI 从建立起没有一次是绿的**：那次改动之后 30 次运行仍然全部 failure。
+两个原因，都不是产品代码：
+
+1. **引号让 glob 到不了 Node 20。** shell 不会展开带引号的 glob，而 Node 20 的
+   `--test` 只接受字面路径（不支持 glob），Node 20 那条腿直接
+   `Could not find '…/tests/*.test.mjs'` 退出；Node 22 支持 glob，所以本机永远绿。
+   矩阵里同时有 20 和 22，CI 必红。
+   更要命的是有一条测试把这个坏字符串**钉死**了：
+   `assert.equal(manifest.scripts.test, 'node --test "tests/*.test.mjs"')` ——
+   断言一条命令的**文本**不等于断言它能跑。
+   现在用不加引号的 `node --test tests/*.test.mjs`，并改为断言：不是裸 `node --test`、
+   参数里没有引号、每个参数都能对上真实文件。
+   （`node --test tests/` 也不行：Node 20 认目录，Node 22 把位置参数当 glob、拿目录
+   当模块，报 `Cannot find module '…/tests'`。）
+
+2. **目标审计在 CI 里直接崩，而不是报告。** 推送行的
+   `rev-parse --verify --quiet` 包在会抛异常的 `git()` 里，ref 不存在时 git 以 1
+   退出且无输出，于是这一行 —— 本该报告"这个分支不在任何远端上"的那一行 —— 把整个
+   审计抛崩（CI 日志里 stdout/stderr 全空）。CI 的 checkout 本来就没有
+   `origin/dot-skill-test` 跟踪 ref，所以每次必崩。现在 ref 探测用不抛异常的
+   `gitRef()`；CI 里这一行记为缺口并写明理由，本地仍严格。
+
+修掉这两个之后，测试才**第一次真的在 CI 里跑起来**，于是又露出两条一直藏着的
+"只在开发机上通过"的测试：
+
+3. `tests/feishu-mcp.test.mjs` 的两条 CLI 路由测试不传 env，`loadCredential` 于是
+   回落读 `~/.colleague-skill/feishu_config.json` —— 我本机上那份改名前的旧凭据。
+   CI 上没有它，必红。同一文件里"缺凭据要响亮失败"那条早就为此隔离过 HOME，这两条
+   漏了。
+4. `knowledge/raw/slack/C0123-p001.json` 这条断言：`writeRaw` 会把名字过一遍
+   `slug()`，落盘其实叫 `c0123-p001.json`。macOS 的 APFS 大小写不敏感，所以本机
+   "通过"；Linux runner 一眼就红。
+
+第 1、2 条修完后 CI 仍未绿，正是第 3、4 条挡着 —— 它们只有在 CI 真的执行测试时
+才会现身。第 2、3、4 条是同一个教训的三种形状：**本地绿说明不了任何事，除非本地与
+CI 的差异（Node 版本、环境变量、大小写不敏感的文件系统、开发机上的历史文件）被
+显式消掉。**
+
+补记后的验证（全部在 CI 上）：
+
+```
+Node 20       success
+Node 22       success
+Acceptance    success   ← 三个 job 全绿，本仓库第一次
+```
