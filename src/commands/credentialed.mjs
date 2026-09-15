@@ -66,7 +66,13 @@ async function runModule(load, argv, { json, reporter }) {
     forward(err, (line) => reporter.warn(line));
   }
   const receipt = result?.receipt ?? parseReceiptFrom(out) ?? undefined;
-  const exitCode = result?.exitCode ?? (result?.ok === false ? 1 : 0);
+  // A channel module signals an early failure by returning the **exit code** (a
+  // number) rather than a result object — `runCollectCli` returns 1 when the key
+  // is missing. Reading only `result?.exitCode` turned every one of those into a
+  // success: `collect feishu` with no credential exited 0 with an empty receipt,
+  // which is the opposite of "fail loudly with a remedy".
+  const numeric = typeof result === "number" ? result : null;
+  const exitCode = numeric ?? result?.exitCode ?? (result?.ok === false ? 1 : 0);
   return { receipt, exitCode };
 }
 
