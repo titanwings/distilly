@@ -8,6 +8,8 @@
 import { spawnSync } from "node:child_process";
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -16,11 +18,28 @@ import { PLANNED, listCommandDetails, listCommands, missingCommandError, resolve
 const projectRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const cli = join(projectRoot, "bin", "distilly.mjs");
 
+/**
+ * A scratch home for the host lookups the CLI performs.
+ *
+ * `install <host>` and `doctor` resolve `$DSH_HOME/skills/distilly` (and every other
+ * host's directory) from the environment. Inheriting the developer's real
+ * `$DSH_HOME` made both depend on whether *this machine* happens to have Distilly
+ * installed for DeepSeek Harness: with one installed, `install --dry-run` found an
+ * existing directory and reported outputs, and `doctor` inventoried it — red for a
+ * reason that had nothing to do with the code under test.
+ */
+const ISOLATED_HOME = mkdtempSync(join(tmpdir(), "dst-test-home-"));
+
 export function runCli(args, { cwd = projectRoot, env = {} } = {}) {
   return spawnSync(process.execPath, [cli, ...args], {
     cwd,
     encoding: "utf8",
-    env: { ...process.env, ...env },
+    env: {
+      ...process.env,
+      DSH_HOME: join(ISOLATED_HOME, "dsh"),
+      DSH_AGENTS_HOME: join(ISOLATED_HOME, "agents"),
+      ...env,
+    },
   });
 }
 
@@ -77,7 +96,7 @@ test("skill commands are registered and answer with a receipt", () => {
 });
 
 test("--json emits a receipt with the contract shape and nothing else on stdout", () => {
-  const result = runCli(["skill", "list", "--character", "colleague", "--base-dir", "tests", "--json"]);
+  const result = runCli(["skill", "list", "--character", "colleague", "--skills-dir", "tests", "--json"]);
   assert.equal(result.status, 0);
   const receipt = parseReceipt(result.stdout);
   assert.deepEqual(Object.keys(receipt).slice(0, 8), [
