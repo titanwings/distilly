@@ -1,6 +1,0 @@
-#!/bin/sh
-if [ "$1" = "--version" ]; then
-  echo "Hermes Agent v0.19.0 (2026.7.20) · upstream 01906e99"
-  exit 0
-fi
-exec /tmp/hermes-venv/bin/hermes "$@"
