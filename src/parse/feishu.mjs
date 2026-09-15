@@ -70,12 +70,15 @@ function flattenSender(sender) {
   return "";
 }
 
-function unwrap(value) {
+function unwrap(value, depth = 0) {
   if (Array.isArray(value)) return value;
-  if (value && typeof value === "object") {
-    for (const key of ["messages", "records", "data", "items"]) {
-      if (Array.isArray(value[key])) return value[key];
-    }
+  if (value === null || typeof value !== "object" || depth > 3) return null;
+  for (const key of ["messages", "records", "data", "items"]) {
+    if (Array.isArray(value[key])) return value[key];
+    // The open-platform paging shape is { code, msg, data: { has_more, items } } —
+    // the array sits one level below `data`, so one look is not enough.
+    const inner = unwrap(value[key], depth + 1);
+    if (inner !== null) return inner;
   }
   return null;
 }
@@ -215,6 +218,7 @@ export function parseFeishu(file, options = {}) {
 
   const records = recordsFromCharSpans(file, spans);
   return buildDocument({
+    identity: options.identity,
     parser: "feishu",
     format: detected.format,
     kind: "message",

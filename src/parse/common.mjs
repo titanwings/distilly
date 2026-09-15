@@ -32,6 +32,7 @@
  */
 
 import { readFileSync, statSync } from "node:fs";
+import { IDENTITY_FILE, canonicalSpeaker } from "../knowledge/identity.mjs";
 import { inflateRawSync } from "node:zlib";
 import { basename, extname } from "node:path";
 import {
@@ -985,6 +986,8 @@ export function assembleContent({ file, records, separator = "\n" }) {
       byteStart: record.byteStart ?? null,
       byteEnd: record.byteEnd ?? null,
       file: record.file ?? file.name,
+      speaker: record.speaker ?? null,
+      at: record.at ?? null,
     });
     entries.push({
       kind: record.kind ?? "item",
@@ -993,6 +996,8 @@ export function assembleContent({ file, records, separator = "\n" }) {
       byteStart: record.byteStart ?? null,
       byteEnd: record.byteEnd ?? null,
       file: record.file ?? file.name,
+      speaker: record.speaker ?? null,
+      at: record.at ?? null,
       synthetic: Boolean(record.synthetic),
     });
     if (record.synthetic) syntheticRecords.push(record.label ?? record.text.slice(0, 40));
@@ -1024,6 +1029,10 @@ export function recordsFromCharSpans(file, slices) {
     // would claim the first byte of the file as the origin of unrelated text.
     byteStart: slice.text === "" ? null : file.charToByte(slice.charStart),
     byteEnd: slice.text === "" ? null : file.charToByte(slice.charEnd),
+    // Attribution travels with the record so `assembleContent` can put it on the
+    // segment, where the renderer reads it.
+    speaker: slice.speaker ?? null,
+    at: slice.at ?? null,
   }));
 }
 
@@ -1067,8 +1076,28 @@ export function buildDocument(input) {
   const files = Array.isArray(input.files) ? input.files : [input.files];
   if (files.length === 0 || !files[0]) throw new TypeError("buildDocument requires at least one source file");
 
-  const assembled = input.records
-    ? assembleContent({ file: files[0], records: input.records, separator: input.separator })
+  // One person, several channel handles: canonicalise the speakers **before** the
+  // text is assembled, so the rendered paragraph, its anchor and every derived
+  // statistic name the person the same way. Doing it later (in `recordDocument`)
+  // would leave the raw handle inside the anchored line.
+  let records = input.records;
+  let identity = null;
+  if (Array.isArray(records) && input.identity?.map?.size > 0) {
+    const matched = new Set();
+    let changed = 0;
+    records = records.map((record) => {
+      if (record === null || typeof record !== "object") return record;
+      const canonical = canonicalSpeaker(record.speaker, input.identity);
+      if (canonical === record.speaker) return record;
+      if (record.speaker !== null && record.speaker !== undefined) matched.add(String(record.speaker).trim());
+      changed += 1;
+      return { ...record, speaker: canonical };
+    });
+    if (changed > 0) identity = { file: IDENTITY_FILE, handles: [...matched].sort(), turns: changed };
+  }
+
+  const assembled = records
+    ? assembleContent({ file: files[0], records, separator: input.separator })
     : { content: input.content ?? "", segments: input.segments ?? [], entries: input.entries ?? [], syntheticRecords: [] };
 
   return {
@@ -1083,6 +1112,7 @@ export function buildDocument(input) {
     // and `anchors[].file` refer to; it survives the trip through the ledger.
     files: files.map((file) => ({ name: file.name, ...file.descriptor() })),
     content: assembled.content,
+    ...(identity ? { identity } : {}),
     segments: assembled.segments,
     entries: assembled.entries,
     groupBy: input.groupBy ?? (assembled.segments.length > 0 ? "segment" : "blank"),

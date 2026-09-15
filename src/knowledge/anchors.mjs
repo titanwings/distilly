@@ -681,6 +681,11 @@ function buildSegmentLookup(segments) {
     index,
     label: segment.label ?? null,
     file: segment.file ?? null,
+    // Attribution is render-time markup: the anchor's *text* stays the verbatim
+    // raw-byte slice, but the rendered paragraph says who spoke and when, because
+    // the derivation reads the rendered text.
+    speaker: segment.speaker ?? null,
+    at: segment.at ?? segment.atLast ?? null,
     // Present only when the parser could point at the raw payload. `null` means
     // "this text is derived" (an inflated OOXML member, a stripped HTML body) and
     // is reported as such rather than faked with an offset.
@@ -689,12 +694,34 @@ function buildSegmentLookup(segments) {
         ? { byteStart: segment.byteStart, byteEnd: segment.byteEnd, file: segment.file ?? null }
         : null,
   }));
-  return (charIndex) => {
+  const segmentAt = (charIndex) => {
     for (const span of spans) {
       if (charIndex >= span.start && charIndex < span.end) return span;
     }
     return spans[spans.length - 1];
   };
+  // Callable for existing callers, with `.segmentAt` for the ones that need the
+  // whole span (speaker and timestamp included).
+  segmentAt.segmentAt = segmentAt;
+  return segmentAt;
+}
+
+/**
+ * The `<at> <speaker>：` prefix a rendered paragraph carries.
+ *
+ * Both parts are optional and independently omitted — a subtitle cue has a
+ * timestamp but no speaker, a pasted note has neither. What must never happen
+ * is inventing one: an unknown speaker is silence, not the word "unknown".
+ */
+function attributionFor(unit, lookup) {
+  if (typeof lookup !== "function") return "";
+  const span = lookup.segmentAt ? lookup.segmentAt(unit.contentCharStart) : lookup(unit.contentCharStart);
+  if (!span) return "";
+  const parts = [];
+  if (typeof span.at === "string" && span.at !== "") parts.push(span.at);
+  if (typeof span.speaker === "string" && span.speaker.trim() !== "") parts.push(`${span.speaker.trim()}：`);
+  if (parts.length === 0) return "";
+  return parts.length === 2 ? `${parts[0]} ${parts[1]}` : `${parts[0]} `;
 }
 
 /**
@@ -826,7 +853,12 @@ function anchorNormalized(normalized, options = {}) {
     );
   }
 
-  const rendered = units.length > 0 ? `${units.map((unit) => `${unit.anchor} ${unit.text}`).join("\n\n")}\n` : "";
+  // Contract form: `[k0012] <at> <speaker>：text`. The brackets are what every
+  // anchor reader keys on, so this line is load-bearing for the whole spine.
+  const rendered =
+    units.length > 0
+      ? `${units.map((unit) => `[${unit.anchor}] ${attributionFor(unit, lookup)}${unit.text}`).join("\n\n")}\n`
+      : "";
 
   return {
     text: rendered,

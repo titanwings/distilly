@@ -10,15 +10,17 @@
  * identical bytes appends nothing (the ledger dedupes by sha256).
  */
 
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { basename, extname, join, relative, resolve } from "node:path";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { basename, dirname, extname, join, relative, resolve } from "node:path";
 
 import { register } from "./index.mjs";
 import { KnowledgeStore, sha256Hex } from "../knowledge/store.mjs";
 import { loadLedger, recordDocument, saveLedger, ledgerStats } from "../knowledge/ledger.mjs";
+import { IDENTITY_FILE, applyIdentity, loadIdentity } from "../knowledge/identity.mjs";
 import { SourceFile, buildDocument, recordsFromCharSpans } from "../parse/common.mjs";
 import { parseSubtitle } from "../parse/subtitle.mjs";
 import { parseChat } from "../parse/chat.mjs";
+import { detectFeishuFormat, parseFeishu } from "../parse/feishu.mjs";
 
 const SUBTITLE_EXTENSIONS = new Set([".srt", ".vtt"]);
 const TEXT_EXTENSIONS = new Set([".md", ".txt", ".text"]);
@@ -47,15 +49,15 @@ const help = {
 };
 
 function parseHarvestArgs(argv) {
-  const options = { person: null, baseDir: process.cwd(), source: null, json: false, fetchedAt: null };
+  const options = { person: null, baseDir: process.cwd(), source: null, json: false, fetchedAt: null, identity: null };
   const paths = [];
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--json") options.json = true;
-    else if (["--person", "--base-dir", "--source", "--fetched-at"].includes(arg)) {
+    else if (["--person", "--base-dir", "--source", "--fetched-at", "--identity"].includes(arg)) {
       const value = argv[index + 1];
       if (!value) return { error: `${arg} requires a value` };
-      const key = { "--person": "person", "--base-dir": "baseDir", "--source": "source", "--fetched-at": "fetchedAt" }[arg];
+      const key = { "--person": "person", "--base-dir": "baseDir", "--source": "source", "--fetched-at": "fetchedAt", "--identity": "identity" }[arg];
       options[key] = value;
       index += 1;
     } else if (arg.startsWith("--")) return { error: `unknown option: ${arg}` };
@@ -79,18 +81,35 @@ function walk(target, out = []) {
 }
 
 /** One document per input file, or a warning explaining why not. */
-function documentFor(path, sourceLabel) {
+function documentFor(path, sourceLabel, identity = null) {
   const raw = readFileSync(path);
   const file = new SourceFile({ path, raw });
   const extension = extname(path).toLowerCase();
   const source = sourceLabel ?? basename(resolve(path, ".."));
-  const common = { source, files: [file] };
+  const common = { source, files: [file], identity };
 
   if (SUBTITLE_EXTENSIONS.has(extension)) {
     return { document: parseSubtitle(file, { ...common, method: "local-file" }) };
   }
   if (CHAT_EXTENSIONS.has(extension)) {
-    return { document: parseChat(file, { ...common, method: "user-export" }) };
+    // A Feishu page export is JSON too; ask the Feishu detector before parseChat,
+    // which refuses anything it does not recognise by name.
+    let feishu = null;
+    try {
+      feishu = detectFeishuFormat(file);
+    } catch {
+      feishu = null;
+    }
+    if (feishu !== null) {
+      return { document: parseFeishu(file, { ...common, method: "user-export" }) };
+    }
+    // A Slack export keeps its display names in a sibling `users.json`; without it
+    // the normalised text keeps raw ids and the derivation counts them as people.
+    const sibling = join(dirname(path), "users.json");
+    // `readSlackUsers` takes the raw text (it does its own JSON.parse and reports
+    // malformed input as a warning rather than throwing).
+    const users = existsSync(sibling) ? readFileSync(sibling, "utf8") : undefined;
+    return { document: parseChat(file, { ...common, method: "user-export", ...(users === undefined ? {} : { users }) }) };
   }
   if (TEXT_EXTENSIONS.has(extension)) {
     const text = raw.toString("utf8");
@@ -117,7 +136,7 @@ function documentFor(path, sourceLabel) {
 
 register("harvest", {
   summary: "零凭据采集：本地文件 → knowledge/ / zero-credential intake",
-  usage: "distilly harvest <dir|file...> --person <slug> [--base-dir <dir>] [--source <label>] [--json]",
+  usage: "distilly harvest <dir|file...> --person <slug> [--base-dir <dir>] [--source <label>] [--identity <map.json>] [--json]",
   ...help,
   run({ argv, json, reporter }) {
     const parsed = parseHarvestArgs(argv);
@@ -138,6 +157,32 @@ register("harvest", {
     const personDir = join(resolve(options.baseDir), "skills", "colleague", options.person);
     const store = new KnowledgeStore(personDir);
     const ledger = loadLedger(store);
+    // The map travels with the Skill: `harvest --identity <file>` installs a copy as
+    // `identity.json` so later imports (and the derivation) see the same mapping.
+    let identityPath = null;
+    if (options.identity) {
+      const source = resolve(options.identity);
+      if (!existsSync(source)) {
+        return {
+          receipt: { command: "harvest", person: options.person, ok: false, inputs: [], outputs: [], anchors: { total: 0, cited: 0 }, warnings: [], unavailable: [], error: { code: "harvest/identity", message: `--identity file not found: ${options.identity}`, remedy: "pass a JSON map with a \"people\" array" } },
+          exitCode: 2,
+        };
+      }
+      mkdirSync(personDir, { recursive: true });
+      copyFileSync(source, join(personDir, IDENTITY_FILE));
+      identityPath = join(personDir, IDENTITY_FILE);
+    }
+    let identity = { path: null, map: new Map(), people: [], warnings: [] };
+    try {
+      identity = loadIdentity(personDir, identityPath ? { path: identityPath } : {});
+    } catch (error) {
+      return {
+        receipt: { command: "harvest", person: options.person, ok: false, inputs: [], outputs: [], anchors: { total: 0, cited: 0 }, warnings: [], unavailable: [], error: { code: "harvest/identity", message: error.message, remedy: "fix identity.json; a handle may only belong to one person" } },
+        exitCode: 2,
+      };
+    }
+    for (const warning of identity.warnings ?? []) warnings.push(warning);
+
     const warnings = [];
     const inputs = [];
     const entries = [];
@@ -160,7 +205,7 @@ register("harvest", {
       inputs.push({ path: relative(process.cwd(), file), sha256: sha256Hex(raw), bytes: raw.length });
       let built;
       try {
-        built = documentFor(file, options.source);
+        built = documentFor(file, options.source, identity);
       } catch (error) {
         warnings.push(`${relative(process.cwd(), file)}: ${error.message}`);
         continue;

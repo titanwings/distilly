@@ -304,6 +304,10 @@ export function parseSubtitle(file, options = {}) {
       label: cue.speaker
         ? `cue ${cue.index} · ${cue.speaker} @ ${formatTimecode(cue.start)}`
         : `cue ${cue.index} @ ${formatTimecode(cue.start)}`,
+      speaker: cue.speaker ?? null,
+      at: formatTimecode(cue.start),
+      speaker: cue.speaker ?? null,
+      at: formatTimecode(cue.start),
     })),
   );
 
@@ -319,6 +323,7 @@ export function parseSubtitle(file, options = {}) {
   }
 
   return buildDocument({
+    identity: options.identity,
     parser: "subtitle",
     format: detected.format,
     kind: "subtitle",

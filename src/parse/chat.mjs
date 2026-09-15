@@ -419,6 +419,10 @@ function turnsToRecords(file, turns, warnings, label) {
       charEnd: located ? located.charEnd : 0,
       kind: "turn",
       label: [turn.speaker ?? "unknown", turn.timestamp ?? null].filter(Boolean).join(" · "),
+      // The rendered paragraph carries `<at> <speaker>：`; the derivation reads that
+      // text, so both have to survive the trip from the parser to the renderer.
+      speaker: turn.speaker ?? null,
+      at: turn.timestamp ?? null,
       located: Boolean(located),
     });
   }
@@ -428,6 +432,9 @@ function turnsToRecords(file, turns, warnings, label) {
       text: slice.text,
       label: slice.label,
       file: file.name,
+      // Attribution rides on the record; the renderer reads it off the segment.
+      speaker: slice.speaker ?? null,
+      at: slice.at ?? null,
     };
     if (slice.located) {
       record.byteStart = file.charToByte(slice.charStart);
@@ -811,6 +818,7 @@ export function parseChat(file, options = {}) {
   }
 
   return buildDocument({
+    identity: options.identity,
     parser: "chat",
     format: detected.format,
     kind: meta?.conversations !== undefined ? "chat-thread" : "chat",
