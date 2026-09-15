@@ -11,7 +11,7 @@
  * returned untouched), so running it twice is a no-op the second time.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { SCHEMA_VERSION, jsonDumps } from "./schema.mjs";
@@ -107,12 +107,12 @@ export function findSkillDirs(baseDir) {
 
 function safeReaddir(dir) {
   try {
-    return require("node:fs")
-      .readdirSync(dir, { withFileTypes: true })
+    return readdirSync(dir, { withFileTypes: true })
       .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
       .map((entry) => entry.name)
       .sort();
   } catch {
+    // A directory that does not exist (or cannot be read) contributes nothing.
     return [];
   }
 }
