@@ -24,7 +24,131 @@ import { UnrecognizedFormatError, buildDocument, recordsFromCharSpans } from "./
 const SRT_TIMECODE = /^\s*(\d{1,2}):(\d{2}):(\d{2})[,.](\d{1,3})\s*-->\s*(\d{1,2}):(\d{2}):(\d{2})[,.](\d{1,3})(.*)$/;
 const VTT_TIMECODE = /^\s*(?:(\d{1,2}):)?(\d{2}):(\d{2})\.(\d{3})\s*-->\s*(?:(\d{1,2}):)?(\d{2}):(\d{2})\.(\d{3})(.*)$/;
 const VTT_VOICE = /^<v(?:\.[^\s>]+)*\s+([^>]+)>/;
+/**
+ * Split one cue's text at the speaker changes inside it.
+ *
+ * Real caption tracks are a stream: the speaker changes mid-cue (`… MINUTES.
+ * MR. MICA: I thank the gentleman.`), and only ~5% of the cues in a C-SPAN
+ * recording *start* with a name. Reading one speaker per cue therefore attributed
+ * almost nothing, and the per-speaker derivations had nothing to work with.
+ *
+ * The split is textual only. A speaker change inside a cue carries no timecode of
+ * its own, so every run keeps the cue's timecode and byte range — the range is an
+ * honest superset of the text, and no timing is invented.
+ *
+ * @returns {Array<{speaker: string|null, text: string}>} one entry per run
+ */
+export function splitSpeakerRuns(lines, initialSpeaker) {
+  // Two views of the same cue: `flat` is what a reader should see (caption tracks
+  // break lines mid-sentence, so they are joined with spaces), `verbatim` is what
+  // the payload actually contains. Labels are found on `flat`, but a split run is
+  // cut out of `verbatim` — an anchor's text has to be the bytes that are there,
+  // and a flattened copy is not.
+  const flat = lines
+    .map((line) => line.replace(TAG, "").replace(CUE_SETTINGS, ""))
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (flat === "") return [];
+
+  const verbatim = lines.map((line) => line.replace(TAG, "").replace(CUE_SETTINGS, "")).join("\n");
+  // What a single-run cue reports as its text: the cue's own lines, cleaned but
+  // **keeping their line structure**. Flattening them would make the text a
+  // string the payload does not contain, and the anchor's range would no longer
+  // hold its own words.
+  // Whitespace is **not** collapsed: the anchored text has to be a verbatim slice
+  // of the payload, and a caption line with a double space or a trailing tab would
+  // stop being one. Only markup (tags, cue settings) is removed, and blank lines
+  // are dropped. Real caption tracks expose this immediately — the synthetic
+  // fixtures happened not to contain a double space.
+  const readable = lines
+    .map((line) => line.replace(TAG, "").replace(CUE_SETTINGS, "").replace(/[ \t]+$/, ""))
+    .filter((line) => line.trim() !== "")
+    .join("\n");
+  const label = /([\p{L}\p{N}][\p{L}\p{N} ._'-]{0,23}):\s+/gu;
+  const cuts = [];
+  for (const match of flat.matchAll(label)) {
+    const at = match.index;
+    if (at > 0 && !/[.!?]\s$/.test(flat.slice(Math.max(0, at - 2), at))) continue;
+    const name = speakerFromLine(`${match[1]}: x`);
+    if (name === null) continue;
+    cuts.push({ at, name });
+  }
+  // No speaker change inside this cue: keep the readable one-paragraph form.
+  if (cuts.length === 0) return [{ speaker: initialSpeaker, text: readable }];
+
+  // Walk the verbatim text and cut at the same labels, matched by name so the two
+  // views stay aligned without index arithmetic across differently-spaced strings.
+  const markers = [];
+  const nameAt = new RegExp(label.source, "gu");
+  for (const match of verbatim.matchAll(nameAt)) {
+    const name = speakerFromLine(`${match[1]}: x`);
+    if (name === null) continue;
+    const before = verbatim.slice(Math.max(0, match.index - 2), match.index);
+    if (match.index > 0 && !/[.!?]\s$/.test(before) && !/\n$/.test(before)) continue;
+    markers.push({ labelStart: match.index, textStart: match.index + match[0].length, name });
+  }
+  // A label at position 0 is the cue's **own** speaker, and it stays part of the
+  // text: that is how every subtitle has always been read (`Lin: 我先说结论…` is
+  // the cue's words, and `unit.text` still starts with the name). Only a label that
+  // interrupts a cue — the caption stream switching speaker mid-sentence — splits it.
+  const cuts2 = markers.filter((marker) => marker.labelStart > 0);
+  if (cuts2.length === 0) return [{ speaker: initialSpeaker, text: readable }];
+
+  const runs = [];
+  const head = verbatim.slice(0, cuts2[0].labelStart).trim();
+  if (head !== "") runs.push({ speaker: initialSpeaker, text: head });
+  for (let index = 0; index < cuts2.length; index += 1) {
+    const from = cuts2[index].textStart;
+    const to = index + 1 < cuts2.length ? cuts2[index + 1].labelStart : verbatim.length;
+    const text = verbatim.slice(from, to).trim();
+    if (text !== "") runs.push({ speaker: cuts2[index].name, text });
+  }
+  return runs;
+}
+
 const SPEAKER_PREFIX = /^([\p{L}\p{N}][\p{L}\p{N} ._'-]{0,23}):\s+(\S.*)$/u;
+
+/**
+ * Titles that end in a period without ending a sentence.
+ *
+ * Used to tell `MR. LEWIS:` (one speaker) from `MINUTES. MR. MICA:` (the tail of
+ * the previous sentence plus the real speaker). Real caption tracks join both
+ * onto one line, so the name has to be taken from the **last** sentence fragment,
+ * and these abbreviations must not be treated as a boundary.
+ */
+const NAME_ABBREVIATIONS = new Set([
+  "mr", "mrs", "ms", "dr", "sen", "rep", "hon", "gen", "col", "sgt", "lt", "gov", "pres", "st", "jr", "sr", "messrs",
+]);
+
+/**
+ * The speaker a caption line names, or `null`.
+ *
+ * Caption tracks are not tidy: a line may open with a dialogue dash
+ * (`- MR. LEWIS: …`), or carry the end of the previous sentence before the name
+ * (`MINUTES. MR. MICA: …`). Taking the regex match verbatim produced speakers
+ * called `- MR. LEWIS` and `MINUTES. MR. MICA`, which split one person into
+ * several and left the relation/timeline derivations with nothing to say.
+ */
+function speakerFromLine(line) {
+  const match = SPEAKER_PREFIX.exec(String(line ?? "").replace(/^[\s\u2013\u2014-]+/u, ""));
+  if (!match) return null;
+  let name = match[1].trim();
+  if (name === "") return null;
+
+  // Walk the fragments and keep everything from the last *sentence* boundary on.
+  const fragments = name.split(/(?<=\.)\s+/);
+  if (fragments.length > 1) {
+    let start = 0;
+    for (let index = 0; index < fragments.length - 1; index += 1) {
+      const lastWord = fragments[index].replace(/\.$/, "").split(/\s+/).pop() ?? "";
+      if (!NAME_ABBREVIATIONS.has(lastWord.toLowerCase())) start = index + 1;
+    }
+    name = fragments.slice(start).join(" ").trim();
+  }
+  if (name === "" || name.split(/\s+/).length > 5 || name.length > 24) return null;
+  return name;
+}
 const TIMECODE_ANY = /^\s*\d{1,2}:\d{2}:\d{2}[.,]\d{1,3}\s*-->/;
 const TAG = /<[^>]*>/g;
 /** WebVTT cue settings that appear after the arrow. */
@@ -203,9 +327,9 @@ export function splitCues(file, format) {
       speaker = voice[1].trim();
       speakerSource = "webvtt-voice";
     } else {
-      const prefix = SPEAKER_PREFIX.exec(cleaned[0] ?? "");
-      if (prefix) {
-        speaker = prefix[1].trim();
+      const named = speakerFromLine(cleaned[0]);
+      if (named !== null) {
+        speaker = named;
         speakerSource = "name-prefix";
       }
     }
@@ -241,20 +365,27 @@ export function splitCues(file, format) {
       continue;
     }
 
-    cues.push({
-      index: indexLine !== null && /^\d+$/.test(indexLine) ? Number(indexLine) : position + 1,
-      start,
-      end,
-      settings: settings || null,
-      speaker,
-      speakerSource,
-      text: body,
-      line: lineIndex + 1,
-      charStart: firstLine.start,
-      charEnd: lastBody.end,
-      byteStart,
-      byteEnd,
-    });
+    // One cue may hold several speakers; emit one record per run. Each run keeps the
+    // cue's timecode and byte range (a speaker change inside a cue has no timecode
+    // of its own), so the text is exact and nothing is invented.
+    const runs = splitSpeakerRuns(rawLines, speaker);
+    const multi = runs.length > 1;
+    for (const run of runs) {
+      cues.push({
+        index: indexLine !== null && /^\d+$/.test(indexLine) ? Number(indexLine) : position + 1,
+        start,
+        end,
+        settings: settings || null,
+        speaker: run.speaker,
+        speakerSource: multi && run.speaker !== speaker ? "name-prefix" : speakerSource,
+        text: run.text,
+        line: lineIndex + 1,
+        charStart: firstLine.start,
+        charEnd: lastBody.end,
+        byteStart,
+        byteEnd,
+      });
+    }
   }
 
   for (const problem of indexProblems) warnings.push(problem);
@@ -306,11 +437,11 @@ export function parseSubtitle(file, options = {}) {
         ? `cue ${cue.index} · ${cue.speaker} @ ${formatTimecode(cue.start)}`
         : `cue ${cue.index} @ ${formatTimecode(cue.start)}`,
       speaker: cue.speaker ?? null,
-      // No `at`: a cue's timecode is cue *framing*, not attribution. It travels in
-      // `label` and in `meta.timecodes`, and the rendered paragraph stays
-      // `[k0001] <text>` — putting it in the prose would repeat it on every line of
-      // a transcript whose times the reader already has. A chat turn, by contrast,
-      // has a speaker and a moment, and that *is* attribution.
+      // The timecode travels on the record because the **derivation** needs it:
+      // `deriveTimeline` buckets units by `at`, and dropping it here silently
+      // emptied the timeline for every subtitle corpus. Whether it is *rendered*
+      // is a separate decision, made in `attributionFor`.
+      at: formatTimecode(cue.start),
     })),
   );
 

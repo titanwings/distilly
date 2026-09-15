@@ -247,7 +247,11 @@ function gapSection(section, reason) {
     kind: section.kind,
     title: section.title,
     items: [{ text: `本节证据不足：${reason}。`, confidence: "low", anchors: [] }],
-    ...(section.timeline ? { gap: true } : {}),
+    // Every declared gap carries the marker, not only the timeline: `view check`
+    // downgrades "a segment is thin" to a warning *because* the section says it has
+    // no evidence. A gap section without the marker is an error by definition — so
+    // a page honestly reporting its own gaps could not be rendered at all.
+    gap: true,
   };
 }
 

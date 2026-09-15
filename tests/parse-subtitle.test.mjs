@@ -20,6 +20,12 @@ function load(name, options = {}) {
   return new SourceFile({ path, raw: new Uint8Array(readFileSync(path)), ...options });
 }
 
+/** A file from the licensed public corpus, relative to `public-corpus/`. */
+function loadPublic(relative) {
+  const path = join(FIXTURES, "..", "..", "public-corpus", relative);
+  return new SourceFile({ path, raw: new Uint8Array(readFileSync(path)) });
+}
+
 /** Run a parsed document through the ledger so anchors can be resolved. */
 function record(document) {
   const store = new KnowledgeStore(mkdtempSync(join(tmpdir(), "distilly-sub-")));
@@ -208,5 +214,43 @@ test("parsing is deterministic: two runs produce identical documents", () => {
   const first = JSON.stringify(parseSubtitle(load("talk.vtt")));
   const second = JSON.stringify(parseSubtitle(load("talk.vtt")));
   assert.equal(first, second);
+});
+
+
+/* ------------------------------------------------------------------ */
+/* real captions                                                       */
+/* ------------------------------------------------------------------ */
+
+test("a real closed-caption track: speakers split where they change mid-cue", () => {
+  // The public-domain corpus in `public-corpus/us-house-floor-2009-07-29` is a real
+  // C-SPAN caption track. Unlike the synthetic fixtures it does not put a name at
+  // the start of every cue: the speaker changes mid-sentence (`… MINUTES. MR. MICA:
+  // I thank the gentleman.`) and a line may open with a dialogue dash. Reading one
+  // speaker per cue attributed almost nothing, and the per-speaker derivations had
+  // nothing to work with.
+  const file = loadPublic("us-house-floor-2009-07-29/transcript.srt");
+  const document = parseSubtitle(file);
+
+  const speakers = [...new Set(document.entries.map((entry) => entry.speaker).filter(Boolean))];
+  assert.ok(speakers.length >= 5, `expected several named speakers, got ${speakers.join(", ")}`);
+  assert.ok(speakers.includes("MR. LEWIS"), `MR. LEWIS must be recognised, got ${speakers.join(", ")}`);
+
+  for (const speaker of speakers) {
+    assert.equal(speaker.startsWith("-"), false, `dialogue dash kept in ${JSON.stringify(speaker)}`);
+    assert.equal(
+      /^[A-Z]+\b[^.]*\.\s+[A-Z]/.test(speaker.replace(/^(MR|MRS|MS|DR|SEN|REP|HON)\./i, "")),
+      false,
+      `a swallowed sentence survived in the speaker name: ${JSON.stringify(speaker)}`,
+    );
+  }
+
+  // Every cue's text still sits inside its own byte range.
+  const raw = Buffer.from(file.raw);
+  for (const entry of document.entries.slice(0, 200)) {
+    const slice = raw.subarray(entry.byteStart, entry.byteEnd).toString("utf8");
+    for (const line of entry.text.split("\n")) {
+      assert.ok(slice.includes(line), `${JSON.stringify(line.slice(0, 40))} must be in its range`);
+    }
+  }
 });
 

@@ -729,17 +729,25 @@ function attributionFor(unit, lookup) {
   if (typeof lookup !== "function") return "";
   const span = lookup.segmentAt ? lookup.segmentAt(unit.contentCharStart) : lookup(unit.contentCharStart);
   if (!span) return "";
-  const parts = [];
-  if (typeof span.at === "string" && span.at !== "") parts.push(span.at);
-  // A subtitle cue often already reads `Lin: …`. Prefixing the speaker again would
-  // render `Lin：Lin: …` — the speaker is in the text, so only the timestamp is
-  // markup. Compared without the colon so both `Lin:` and `Lin：` are recognised.
+  // No speaker, no attribution. A subtitle cue's timecode is cue *framing*, not
+  // "who said this, when": rendering it would put `00:00:01.000` in front of every
+  // line of a transcript that already carries its times in `meta.timecodes`. A
+  // conversation turn has a speaker and a moment, and that is what the prefix is
+  // for — which is also why the derivation can still read `at` off the unit.
   const speaker = typeof span.speaker === "string" ? span.speaker.trim() : "";
-  const text = typeof unit.text === "string" ? unit.text.trimStart() : "";
-  const alreadyNamed = speaker !== "" && (text.startsWith(`${speaker}:`) || text.startsWith(`${speaker}：`));
-  if (speaker !== "" && !alreadyNamed) parts.push(`${speaker}：`);
-  if (parts.length === 0) return "";
-  return parts.length === 2 ? `${parts[0]} ${parts[1]}` : `${parts[0]} `;
+  if (speaker === "") return "";
+  const text = unit.text ?? "";
+  const at = span.at === null || span.at === undefined ? "" : String(span.at).trim();
+  const hasAt = at !== "" && !text.startsWith(at) && !text.startsWith(`[${at}]`);
+  // `Lin: …` already names the speaker; repeating it as `Lin：Lin: …` is noise.
+  const hasSpeaker = !text.startsWith(`${speaker}：`) && !text.startsWith(`${speaker}:`);
+  if (!hasAt && !hasSpeaker) return "";
+  const label = `${speaker}：`;
+  // A full-width colon already separates the name from the words, so the text
+  // follows it directly; a bare timestamp needs a space before the words.
+  if (hasAt && hasSpeaker) return `${at} ${label}`;
+  if (hasSpeaker) return label;
+  return `${at} `;
 }
 
 /**

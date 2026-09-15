@@ -90,6 +90,34 @@ export const MIN_UNITS = {
 };
 
 /** Sliding-window width for `shifts`, as a fraction of the corpus. */
+/**
+ * A rendered `<at>` as epoch milliseconds, or `null` when it is not a time.
+ *
+ * The anchor prefix carries whatever the source wrote: an ISO instant from a chat
+ * export, an `HH:MM:SS,mmm` cue timecode from a subtitle. The derivations compare
+ * and bucket these numerically (`ats.sort((a, b) => a - b)`, `unit.at - first`), so
+ * leaving them as strings made every comparison `NaN` — which is why the timeline
+ * came out empty for **both** corpora while the acceptance tolerated it as a gap.
+ * A value that is not a time (an unknown speaker slot, a placeholder) stays as it
+ * came, and `deriveTimeline` skips anything that is not a number.
+ */
+export function toEpochMillis(value) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value !== "string") return null;
+  const text = value.trim();
+  if (text === "") return null;
+
+  const timecode = /^(?:(\d+):)?(\d{1,2}):(\d{2})[.,](\d{1,3})$/.exec(text);
+  if (timecode) {
+    const [, hours, minutes, seconds, fraction] = timecode;
+    const millis = Number(fraction.padEnd(3, "0"));
+    return ((Number(hours ?? 0) * 60 + Number(minutes)) * 60 + Number(seconds)) * 1000 + millis;
+  }
+
+  const parsed = Date.parse(text);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 const SHIFT_WINDOW_RATIO = 0.18;
 const SHIFT_WINDOW_MIN = 5;
 const SHIFT_WINDOW_MAX = 12;
@@ -453,7 +481,10 @@ function buildUnits(blocks, ledger) {
       }
       const unit = byAnchor.get(anchor);
       if (parts.speaker !== null) unit.speakers.push(parts.speaker);
-      if (parts.at !== null) unit.ats.push(parts.at);
+      if (parts.at !== null) {
+        const millis = toEpochMillis(parts.at);
+        unit.ats.push(millis === null ? parts.at : millis);
+      }
       unit.texts.push(parts.text);
     }
   }
