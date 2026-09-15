@@ -199,8 +199,8 @@ test("the text file lists one anchored paragraph per cue", () => {
   const document = parseSubtitle(load("crlf.srt"));
   const { result } = record(document);
   const text = readFileSync(result.written.text.path, "utf8");
-  assert.match(text, /^k0001 CRLF cue text\./);
-  assert.match(text, /k0002 Second cue\./);
+  assert.match(text, /^\[k0001\] CRLF cue text\./);
+  assert.match(text, /\[k0002\] Second cue\./);
   assert.equal(document.entries.length, 2, "the timecodes live in meta.timecodes, not in the prose");
 });
 

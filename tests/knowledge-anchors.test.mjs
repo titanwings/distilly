@@ -67,30 +67,60 @@ test("a UTF-8 BOM is stripped and does not become a paragraph", () => {
   assert.equal(anchored.units[0].byteEnd, 9);
 });
 
-test("GBK, Big5 and Shift_JIS payloads decode deterministically", () => {
+test("GBK, Big5 and Shift_JIS payloads decode when the caller opts in", () => {
   const cases = [
     ["gbk", Buffer.from([0xc4, 0xe3, 0xba, 0xc3]), "你好"],
     ["big5", Buffer.from([0xa7, 0x41, 0xa6, 0x6e]), "你好"],
     ["shift_jis", Buffer.from([0x83, 0x65, 0x83, 0x58, 0x83, 0x67]), "テスト"],
   ];
   for (const [label, bytes, expected] of cases) {
-    const decoded = decodeBuffer(bytes);
+    // `preferred` is how a parser passes a declared charset.
+    const decoded = decodeBuffer(bytes, { preferred: label });
     assert.equal(decoded.text, expected, `${label} text`);
     assert.equal(decoded.label, label, `${label} detected label`);
     assert.equal(decoded.lossy, true, `${label} must be flagged as a guess`);
     assert.ok(decoded.warnings.length > 0, `${label} must warn about the guess`);
-    // Deterministic: same bytes, same answer, twice.
-    assert.deepEqual(decodeBuffer(bytes), decoded);
+    assert.deepEqual(decodeBuffer(bytes, { preferred: label }), decoded, `${label} is deterministic`);
   }
-  // An explicit `preferred` label wins.
+  // 0x88 0x82 is a GBK pair that neither Big5 nor Shift_JIS can decode, so the
+  // opt-in auto-detection chain can settle on GBK without guessing.
+  const uniqueGbk = Buffer.from([0x88, 0x82]);
+  const auto = decodeBuffer(uniqueGbk, { legacyFallback: true });
+  assert.equal(auto.text, "垈");
+  assert.equal(auto.label, "gbk");
+  assert.equal(auto.lossy, true);
+
+  // GBK and Big5 both decode the same CJK bytes, so auto-detection must refuse
+  // and say why rather than pick one.
+  const ambiguous = decodeBuffer(Buffer.from([0xa7, 0x41, 0xa6, 0x6e]), { legacyFallback: true });
+  assert.equal(ambiguous.ok, false);
+  assert.deepEqual(ambiguous.ambiguous, ["gbk", "big5", "shift_jis"]);
+  assert.ok(ambiguous.error.includes("instead of letting us guess"));
+  assert.equal(ambiguous.text.includes("你"), false);
   assert.equal(detectEncoding(Buffer.from([0xc4, 0xe3]), { preferred: "gbk" }).decoded, "你");
 });
 
+test("legacy encodings are never guessed without an explicit opt-in", () => {
+  // Two GBK characters. GBK would happily decode this, but so would several
+  // other codecs, so the default must refuse and report the replacement.
+  const gbkBytes = Buffer.from([0xc4, 0xe3, 0xba, 0xc3]);
+  const conservative = decodeBuffer(gbkBytes);
+  assert.equal(conservative.label, "utf-8");
+  // 3, not the original's 2: Node's UTF-8 decoder emits one U+FFFD per maximal
+  // invalid subsequence, and `c4` / `e3 ba` / `c3` are three of them. The
+  // recovered expectation disagreed with the decoder it was written against, so
+  // the measured value is pinned instead of the number.
+  assert.equal(conservative.replaced, 3);
+  assert.equal(conservative.text.includes("你"), false);
+  assert.deepEqual(conservative.attempted, ["utf-8"]);
+  assert.ok(conservative.warnings.some((warning) => warning.includes("U+FFFD")));
+});
+
 test("invalid UTF-8 falls back to replacement and says how many", () => {
-  const bytes = Buffer.from([0x41, 0xff, 0xfe, 0x42]);
+  const bytes = Buffer.from([0x41, 0xff, 0x42, 0x80, 0x43]);
   const decoded = decodeBuffer(bytes);
   assert.equal(decoded.text.startsWith("A"), true);
-  assert.equal(decoded.replaced >= 1, true);
+  assert.equal(decoded.replaced, 2);
   assert.ok(decoded.warnings.some((warning) => warning.includes("U+FFFD")));
   // Latin-1 is never silently assumed: a lone 0xff is not 'ÿ'.
   assert.equal(decoded.text.includes("ÿ"), false);
@@ -191,7 +221,7 @@ test("resolveAnchor prefers an explicit sub-anchor over the parent paragraph", (
   const bytes = utf8("speaker A: hello\nspeaker B: hi\n");
   const record = {
     units: [{ anchor: "k0001", text: "speaker A: hello\nspeaker B: hi", byteStart: 0, byteEnd: 29, file: "f" }],
-    anchors: [{ anchor: "k0001:t2", kind: "turn", text: "speaker B: hi", byteStart: 18, byteEnd: 29, file: "f" }],
+    anchors: [{ anchor: "k0001:t2", kind: "turn", text: "speaker B: hi", byteStart: 17, byteEnd: 30, file: "f" }],
   };
   const resolved = resolveAnchor("k0001:t2", record, { bytesByFile: new Map([["f", bytes]]) });
   assert.equal(resolved.kind, "turn");

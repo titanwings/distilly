@@ -92,10 +92,10 @@ test("anchors are a flat string list with resolvable detail", () => {
   });
   const { entry } = recordDocument(store, ledger, document, { fetched_at: FIXED_TIME });
 
-  assert.deepEqual(entry.anchors, ["k0001", "k0001:t1", "k0001:t2"]);
+  assert.deepEqual(entry.anchors, ["k0001", "k0002", "k0001:t1", "k0001:t2"]);
   assert.ok(entry.anchors.every((anchor) => typeof anchor === "string"));
-  assert.equal(entry.anchor_detail.length, 3);
-  assert.equal(entry.units.length, 2);
+  assert.equal(entry.anchor_detail.length, 4);
+  assert.equal(entry.units.length, 2, "one paragraph anchor per turn");
   for (const unit of entry.units) assert.equal(unit.id, unit.anchor);
 });
 
@@ -169,17 +169,23 @@ test("an anchor from any paragraph resolves through the ledger", () => {
     records: [{ text: "one", kind: "turn" }, { text: "two", kind: "turn" }],
   });
   const { entry } = recordDocument(store, ledger, document, { fetched_at: FIXED_TIME });
-  const bytes = store.readRaw(entry.files[0].path.split("/").slice(-2)[0], entry.files[0].path.split("/").pop());
+  const bytes = store.readRaw("export", "export.json");
+  const rawOf = (anchor) => {
+    const resolved = resolveLedgerAnchor(ledger, anchor);
+    assert.ok(resolved, `${anchor} must resolve`);
+    return Buffer.from(bytes).subarray(resolved.byteStart, resolved.byteEnd).toString("utf8");
+  };
 
   for (const anchor of ["k0001", "k0002", "k0001:t1", "k0001:t2"]) {
     const resolved = resolveLedgerAnchor(ledger, anchor);
-    assert.ok(resolved, `${anchor} must resolve`);
     assert.equal(resolved.entry.id, entry.id);
-    assert.equal(resolved.bytes, null);
+    assert.equal(resolved.bytes, undefined, "the ledger stores offsets, not payloads");
     assert.equal(Number.isInteger(resolved.byteStart), true);
   }
-  const first = resolveLedgerAnchor(ledger, "k0001");
-  assert.equal(Buffer.from(bytes).subarray(first.byteStart, first.byteEnd).toString("utf8"), "one");
+  assert.equal(rawOf("k0001"), "one");
+  assert.equal(rawOf("k0002"), "two");
+  assert.equal(rawOf("k0001:t1"), "one", "a sub-anchor points at its own turn");
+  assert.equal(rawOf("k0001:t2"), "two");
   assert.equal(resolveLedgerAnchor(ledger, "k0999"), null);
   assert.equal(resolveLedgerAnchor(ledger, "garbage"), null);
 });
@@ -280,7 +286,7 @@ test("the text file carries the paragraph anchors and the ledger points at it", 
   const ledger = loadLedger(store);
   const { entry } = recordDocument(store, ledger, chatDocument("one\n\ntwo\n"), { fetched_at: FIXED_TIME });
   const text = readFileSync(join(store.knowledgeRoot, entry.locations.text), "utf8");
-  assert.match(text, /^k0001 one/);
-  assert.match(text, /k0002 two/);
+  assert.match(text, /^\[k0001\] one/);
+  assert.match(text, /\[k0002\] two/);
   assert.equal(entry.locations.raw.startsWith("raw/"), true);
 });
