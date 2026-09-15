@@ -63,10 +63,15 @@ export function lookup(name) {
   return registry().get(name) ?? null;
 }
 
-export function listCommands({ includeHidden = false } = {}) {
+export function listCommandDetails({ includeHidden = false } = {}) {
   return [...registry().values()]
     .filter((command) => includeHidden || !command.hidden)
     .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** Registered command names (strings) — the shape other branches assert on. */
+export function listCommands({ includeHidden = false } = {}) {
+  return listCommandDetails({ includeHidden }).map((command) => command.name);
 }
 
 /**
@@ -99,7 +104,8 @@ export function missingCommandError(name) {
   });
 }
 
-/** Terminal columns for one string (CJK counts as two), used for help tables. */export function displayWidth(text) {
+/** Terminal columns for one string (CJK counts as two), used for help tables. */
+export function displayWidth(text) {
   let width = 0;
   for (const character of text) {
     const code = character.codePointAt(0);
@@ -139,7 +145,7 @@ const CATALOG_EN = [
 
 /** Bilingual help for the whole CLI (CONTRACT §6: 中文 → `---` → English). */
 export function renderHelp({ version, binary = "distilly" } = {}) {
-  const implemented = listCommands();
+  const implemented = listCommandDetails();
   const plannedNames = Object.keys(PLANNED).sort();
 
   const zh = [
