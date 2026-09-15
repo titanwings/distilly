@@ -104,8 +104,8 @@ export const AGENTS = [
     projectPath: '.dsh/skills/distilly',
     capability: 'full',
     note: {
-      zh: 'DSH_HOME 未设置时等价于 ~/.dsh/skills/distilly；社区集成，非官方 DeepSeek 产品。上游 AgentSkills CLI 没有 DSH 目标，所以只提供 clone 路线。',
-      en: 'Falls back to ~/.dsh/skills/distilly when DSH_HOME is unset; community integration, not an official DeepSeek product. The upstream AgentSkills CLI has no DSH target, so only the clone route is offered.',
+      zh: 'DSH_HOME 未设置时等价于 ~/.dsh/skills/distilly；社区集成，非官方 DeepSeek 产品。',
+      en: 'Falls back to ~/.dsh/skills/distilly when DSH_HOME is unset; community integration, not an official DeepSeek product.',
     },
   },
   {
@@ -176,3 +176,4 @@ export function cloneCommand(id, scope = 'global') {
   if (!target) throw new Error(`${agent.label} has no documented project-local path; use the global install.`);
   return `git clone https://github.com/${REPO} ${target}`;
 }
+
