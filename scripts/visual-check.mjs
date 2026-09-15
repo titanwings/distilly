@@ -481,12 +481,13 @@ async function main() {
     await page.goto(`${url}?theme=dark`, { waitUntil: "load" });
     await ready();
     await screenshot("view-dark.png");
-    await page.setViewportSize({ width: 375, height: 900 });
-    await screenshot("view-mobile-375.png");
+    // Three PNGs: print, light, dark. The 375 px capture was dropped on request —
+    // the narrow-viewport *check* stays (it is check 3, at 1280/768/375), so a
+    // layout that breaks on a phone still fails; only the picture goes away.
     record(
       "png",
-      "PNG evidence written to the output directory",
-      pngs.length >= 4 && pngs.every((entry) => entry.bytes > 1024),
+      "PNG evidence written to the output directory (print + light + dark)",
+      pngs.length >= 3 && pngs.every((entry) => entry.bytes > 1024),
       { outDir, pngs },
     );
 
