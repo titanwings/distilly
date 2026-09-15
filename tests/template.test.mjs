@@ -4,7 +4,7 @@
  */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -142,7 +142,6 @@ test("committed build is stable: two builds of the same fragments are byte-ident
 test("two renders of the same view.json are byte-identical", () => {
   const root = mkdtempSync(join(tmpdir(), "dst-render-"));
   const dir = join(root, "views");
-  const { mkdirSync } = require("node:fs");
   mkdirSync(dir, { recursive: true });
   const viewPath = join(dir, "lin-si.view.json");
   writeFileSync(

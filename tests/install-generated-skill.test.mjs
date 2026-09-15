@@ -5,7 +5,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -109,7 +109,6 @@ test("install rejects ancestor or descendant destinations", () => {
     const ancestorInstall = join(root, "host", "relationship-bundle");
     mkdirSync(ancestorInstall, { recursive: true });
     const nestedSource = join(ancestorInstall, "bundle");
-    const { renameSync } = await_rename();
     renameSync(source, nestedSource);
     assert.throws(
       () =>
@@ -128,8 +127,3 @@ test("install rejects ancestor or descendant destinations", () => {
     rmSync(root, { recursive: true, force: true });
   }
 });
-
-// `renameSync` is imported lazily so the test file keeps a single import style.
-function await_rename() {
-  return { renameSync: (from, to) => import("node:fs").then(() => from && to) && renameSyncImpl(from, to) };
-}

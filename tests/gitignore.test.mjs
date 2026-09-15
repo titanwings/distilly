@@ -96,7 +96,8 @@ test("source modules and bundled examples stay visible", { skip }, () => {
 test("the re-includes come after the rule they override", { skip }, () => {
   // Git applies `.gitignore` top to bottom and the last match wins, so an
   // unanchored `knowledge/` placed after a `!src/knowledge/**` re-excludes it.
-  const { readFileSync } = require("node:fs");
+  // (`readFileSync` comes from the top-level import: this file is ESM, so a
+  // stray `require` here is a reconstruction artefact, not a style choice.)
   const lines = readFileSync(path.join(root, ".gitignore"), "utf8")
     .split("\n")
     .map((line) => line.trim())
