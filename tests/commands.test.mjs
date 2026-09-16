@@ -152,7 +152,7 @@ test("doctor inventories every host and names what this build cannot do yet", ()
       [],
       "every CONTRACT §1 command is implemented in this build",
     );
-    assert.deepEqual(receipt.anchors, { total: 0, cited: 0 });
+    assert.deepEqual(receipt.anchors, { total: 0, cited: 0, dangling: 0 });
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

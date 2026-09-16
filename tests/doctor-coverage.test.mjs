@@ -48,7 +48,11 @@ test("doctor counts the anchors the derivation cites, and names dangling ones", 
   try {
     const ok = parseReceipt(runCli(["doctor", "--base-dir", clean.base, "--json"]).stdout);
     assert.equal(ok.skills, 1, "the skill must be found through --base-dir");
-    assert.deepEqual(ok.anchors, { total: 2, cited: 1 }, "cited comes from evidence/derived, not a constant");
+    assert.deepEqual(
+      ok.anchors,
+      { total: 2, cited: 1, dangling: 0 },
+      "cited comes from the citations on disk, not a constant; dangling is the verdict input",
+    );
     assert.deepEqual(ok.warnings, []);
 
     const bad = parseReceipt(runCli(["doctor", "--base-dir", dangling.base, "--json"]).stdout);
@@ -94,6 +98,48 @@ test("resolveSkillsRoot is deterministic about which spelling it took", () => {
     const bare = resolveSkillsRoot({ baseDir: join(base, "skills"), family: "colleague" });
     assert.equal(bare.bare, true);
     assert.match(bare.warning, /canonical spelling/);
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test("doctor fails — non-zero exit — when a citation cannot be followed back", () => {
+  // A dangling citation is the product's core promise broken ("every conclusion can
+  // be traced back"), yet doctor reported it as a warning beside `ok: true`, so the
+  // exit code was 0 and nothing downstream could act on it. The gate is dangling = 0;
+  // coverage stays a number because a Skill need not cite every cue in the corpus.
+  const clean = fixture();
+  const dangling = fixture({ dangling: true });
+  try {
+    const okRun = runCli(["doctor", "--base-dir", clean.base, "--json"]);
+    assert.equal(okRun.status, 0);
+    const okReceipt = parseReceipt(okRun.stdout);
+    assert.equal(okReceipt.ok, true);
+    assert.equal(okReceipt.verdict, "PASS");
+    assert.equal(okReceipt.anchors.dangling, 0);
+
+    const badRun = runCli(["doctor", "--base-dir", dangling.base, "--json"]);
+    assert.equal(badRun.status, 1, "a dangling citation must fail the command");
+    const badReceipt = parseReceipt(badRun.stdout);
+    assert.equal(badReceipt.ok, false);
+    assert.equal(badReceipt.verdict, "FAIL");
+    assert.equal(badReceipt.anchors.dangling, 1);
+  } finally {
+    rmSync(clean.base, { recursive: true, force: true });
+    rmSync(dangling.base, { recursive: true, force: true });
+  }
+});
+
+test("doctor counts what the generated Skill cites, not only the derived layer", () => {
+  // The deliverable is SKILL.md/work.md/persona.md; the derived JSON is intermediate.
+  // Counting only `evidence/derived/` described the middle of the pipeline while the
+  // artifact at the end of it went unexamined.
+  const { base, skillDir } = fixture();
+  try {
+    writeFileSync(join(skillDir, "SKILL.md"), "# demo\n\n## PART A: Work\n- 负责缓存 [k0002]\n", "utf8");
+    const receipt = parseReceipt(runCli(["doctor", "--base-dir", base, "--json"]).stdout);
+    assert.equal(receipt.anchors.cited, 2, "k0001 from the derived claim, k0002 from SKILL.md");
+    assert.equal(receipt.anchors.dangling, 0);
   } finally {
     rmSync(base, { recursive: true, force: true });
   }

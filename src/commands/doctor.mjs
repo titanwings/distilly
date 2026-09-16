@@ -87,6 +87,34 @@ function citedAnchors(skillDir) {
   return [...found];
 }
 
+/**
+ * Every anchor string the **deliverable** cites — the generated Skill and the page.
+ *
+ * `citedAnchors` above walks `evidence/derived/` only, which is the intermediate
+ * layer nobody reads. What this product ships is `SKILL.md` / `work.md` /
+ * `persona.md` / `work_skill.md` / `persona_skill.md` (and the rendered view). A
+ * Skill whose every rule cites evidence used to contribute **zero** to the `cited`
+ * figure, so the number described the middle of the pipeline while the artifact at
+ * the end of it went unexamined.
+ */
+function deliveredAnchors(skillDir) {
+  const found = new Set();
+  const collect = (text) => {
+    for (const match of String(text).matchAll(/\[(k\d{4}(?::t\d+)?)\]/g)) found.add(match[1]);
+  };
+  for (const name of ["SKILL.md", "work.md", "persona.md", "work_skill.md", "persona_skill.md"]) {
+    const path = join(skillDir, name);
+    if (existsSync(path)) collect(readFileSync(path, "utf8"));
+  }
+  const viewsDir = join(skillDir, "views");
+  if (existsSync(viewsDir)) {
+    for (const name of readdirSync(viewsDir)) {
+      if (name.endsWith(".view.json")) collect(readFileSync(join(viewsDir, name), "utf8"));
+    }
+  }
+  return found;
+}
+
 /** Every anchor a skill's ledger knows about, so a citation can be checked. */
 function resolvedAnchors(skillDir) {
   const ledgerPath = join(skillDir, "knowledge", "index.json");
@@ -196,7 +224,12 @@ register("doctor", {
         // reported in `warnings`, never folded into the number — "we cite two
         // anchors" and "one of the two is broken" are different claims.
         const known = resolvedAnchors(skillDir);
-        for (const anchor of citedAnchors(skillDir)) {
+        // Both layers count now: the derived claims *and* what the generated Skill and
+        // the page actually cite. A citation that does not resolve is a broken promise
+        // — "every conclusion can be traced back" — so it is collected for the verdict
+        // below, not only for a warning line.
+        const citedInSkill = new Set([...citedAnchors(skillDir), ...deliveredAnchors(skillDir)]);
+        for (const anchor of citedInSkill) {
           if (known.has(anchor)) citedTotal += 1;
           else dangling.push(`${family}/${skill.slug}: ${anchor}`);
         }
@@ -224,11 +257,22 @@ register("doctor", {
       );
     }
 
+    const coverage = anchorTotal === 0 ? null : citedTotal / anchorTotal;
     reporter.line("");
     reporter.line(
       `Ledger coverage / 账本：${skillCount} skills, ${anchorTotal} anchors recorded, ${citedTotal} cited ` +
-        `by evidence/derived${dangling.length > 0 ? `, ${dangling.length} dangling` : ""}`,
+        `by derived evidence or the generated Skill` +
+        (coverage === null ? "" : ` (${(coverage * 100).toFixed(0)}% of the ledger)`) +
+        (dangling.length > 0 ? `, ${dangling.length} DANGLING` : ", 0 dangling"),
     );
+    // The gate is **dangling = 0**, not a coverage percentage: a Skill is not obliged
+    // to cite every cue in the corpus, but it is obliged to not cite evidence that
+    // does not exist. Coverage stays in the receipt as information for a human.
+    if (dangling.length > 0) {
+      reporter.line("Verdict / 判定：FAIL —— 有引用回指不到账本，交付物在承诺它没有的证据");
+    } else {
+      reporter.line(`Verdict / 判定：PASS —— 0 悬空引用${coverage === null ? "" : `；账本覆盖 ${(coverage * 100).toFixed(0)}%`}`);
+    }
 
     const unavailable = Object.entries(PLANNED).map(([command, branch]) => ({
       channel: command,
@@ -242,11 +286,16 @@ register("doctor", {
     const receipt = createReceipt("doctor", {
       inputs,
       outputs,
-      anchors: { total: anchorTotal, cited: citedTotal },
+      // `ok: false` when a citation cannot be followed back: the CLI derives its exit
+      // code from this, so doctor now *fails* instead of printing a warning beside a
+      // green `ok: true`. Coverage stays a number, not a verdict — see above.
+      ok: dangling.length === 0,
+      anchors: { total: anchorTotal, cited: citedTotal, dangling: dangling.length },
       warnings,
       unavailable,
     });
     receipt.skills = skillCount;
+    receipt.verdict = dangling.length > 0 ? "FAIL" : "PASS";
     // The host inventory belongs in the receipt too: it is the part of `doctor`
     // a caller most often wants to read programmatically (`--json` is the
     // machine interface), and it was reachable only through the internal `extra`.
