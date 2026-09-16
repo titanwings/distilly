@@ -1,5 +1,12 @@
 # Skill Type Abstraction Design
 
+> ⚠️ **This document describes the v1 (Python-era) shape**: directories are
+> `colleagues/{slug}`, the entrypoint is `tools/*.py`, and the implementation is Python.
+> v2 is a single Node stack: `skills/<family>/<slug>`, entrypoint `bin/distilly.mjs`, a
+> Layer 0–5 persona, and schema v4. **The product intent still holds; for paths and
+> implementation details follow `docs/v2/CONTRACT.md` and `docs/v2/STATUS.md`.**
+> The migration table is in `SKILL.md` and `docs/v2/MIGRATION.md`.
+
 Last updated: 2026-04-16
 
 ## 1. Background

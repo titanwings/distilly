@@ -8,17 +8,19 @@
   },
   "files": [
     "bin/",
+    "src/",
+    "assets/",
+    "scripts/",
     "SKILL.md",
     "prompts/",
     "references/",
-    "tools/",
-    "requirements.txt",
     "INSTALL.md",
     "INSTALL_EN.md",
     "LICENSE",
     "CITATION.cff"
   ],
   "scripts": {
+    "test": "node --test tests/*.test.mjs",
     "prepack": "node bin/distilly.mjs --check-package"
   },
   "keywords": [
@@ -41,9 +43,10 @@
     "url": "https://github.com/titanwings/distilly/issues"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "publishConfig": {
     "registry": "https://npm.pkg.github.com"
   }
 }
+

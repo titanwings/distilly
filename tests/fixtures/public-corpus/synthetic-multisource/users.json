@@ -1,0 +1,26 @@
+[
+  {
+    "id": "U01",
+    "name": "xiaoming",
+    "profile": {
+      "real_name": "小明",
+      "display_name": "小明"
+    }
+  },
+  {
+    "id": "U02",
+    "name": "lingong",
+    "profile": {
+      "real_name": "林工",
+      "display_name": "林工"
+    }
+  },
+  {
+    "id": "U03",
+    "name": "laozhou",
+    "profile": {
+      "real_name": "老周",
+      "display_name": "老周"
+    }
+  }
+]

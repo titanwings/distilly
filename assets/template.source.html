@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="system">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<title>Distilly · 个人画像</title>
+<style>
+/* Distilly single-file view. Offline, zero requests, system fonts only. */
+:root {
+  color-scheme: light;
+  --bg: #fbfaf9; --bg: light-dark(#fbfaf9, #141312);
+  --surface: #ffffff; --surface: light-dark(#ffffff, #1e1c1a);
+  --surface-2: #f4f1ed; --surface-2: light-dark(#f4f1ed, #26231f);
+  --ink: #16130f; --ink: light-dark(#16130f, #f4f1ee);
+  --muted: #5b554e; --muted: light-dark(#5b554e, #bcb5ad);
+  --line: #e4ded6; --line: light-dark(#e4ded6, #35302b);
+  --accent: #8a4b1f; --accent: light-dark(#8a4b1f, #e9b075);
+  --accent-ink: #ffffff; --accent-ink: light-dark(#ffffff, #1a1614);
+  --ok: #1f6f43; --ok: light-dark(#1f6f43, #86d6a8);
+  --warn: #7a4b00; --warn: light-dark(#7a4b00, #ecc76f);
+  --danger: #9b2c1c; --danger: light-dark(#9b2c1c, #f59b8b);
+  --focus: #0b57d0; --focus: light-dark(#0b57d0, #8ab4f8);
+  --radius: 10px;
+  --step: clamp(1rem, 0.6rem + 0.6vw, 1.35rem);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.65;
+  overflow-wrap: break-word;
+}
+
+.wrap { max-width: 60rem; margin: 0 auto; padding: 0 1.1rem 4rem; }
+
+a { color: var(--accent); text-underline-offset: 0.18em; }
+a:hover { text-decoration-thickness: 2px; }
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.skip-link {
+  position: absolute; left: -9999px; top: 0;
+  background: var(--surface); color: var(--ink);
+  padding: 0.5rem 0.9rem; border: 1px solid var(--line); border-radius: var(--radius);
+  z-index: 10;
+}
+.skip-link:focus { left: 0.6rem; top: 0.6rem; }
+
+.page-header { padding: 1.6rem 0 0.6rem; border-bottom: 1px solid var(--line); }
+.brand { display: flex; align-items: center; gap: 0.5rem; color: var(--muted); font-size: 0.82rem; letter-spacing: 0.06em; text-transform: uppercase; }
+.brand svg { width: 1.05rem; height: 1.05rem; color: var(--accent); }
+h1 { font-size: clamp(1.5rem, 1.1rem + 1.6vw, 2.05rem); line-height: 1.25; margin: 0.5rem 0 0.2rem; }
+.page-subtitle { margin: 0 0 0.5rem; color: var(--muted); font-size: 0.95rem; }
+.page-meta { margin: 0; color: var(--muted); font-size: 0.82rem; }
+.page-meta code { font-size: 0.95em; }
+
+.controls { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.9rem 0 0.2rem; }
+.button {
+  font: inherit; font-size: 0.86rem;
+  color: var(--ink); background: var(--surface);
+  border: 1px solid var(--line); border-radius: 999px;
+  padding: 0.34rem 0.85rem; cursor: pointer;
+}
+.button:hover { border-color: var(--accent); color: var(--accent); }
+.button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.button--quiet { background: transparent; color: var(--muted); }
+.status { min-height: 1.2em; margin: 0.45rem 0 0; color: var(--muted); font-size: 0.82rem; }
+
+.privacy-note {
+  margin: 0.8rem 0 0; padding: 0.55rem 0.8rem;
+  background: var(--surface-2); border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius); color: var(--muted); font-size: 0.84rem;
+}
+
+.toc { margin: 1rem 0 0; }
+.toc h2 { font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0 0 0.35rem; font-weight: 600; }
+.toc ol { list-style: none; display: flex; flex-wrap: wrap; gap: 0.35rem 0.75rem; margin: 0; padding: 0; font-size: 0.88rem; }
+.toc a { text-decoration: none; border-bottom: 1px solid var(--line); padding-bottom: 1px; }
+.toc a:hover { border-color: var(--accent); }
+.toc .toc__index { color: var(--muted); font-variant-numeric: tabular-nums; margin-right: 0.25rem; }
+
+main { display: block; }
+
+.section {
+  margin: 2.2rem 0 0;
+  padding: 1.05rem 1.15rem 1.2rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  scroll-margin-top: 1rem;
+}
+.section:target, .section.is-focused { border-color: var(--accent); box-shadow: 0 0 0 2px var(--focus); }
+.section__head { display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; }
+.section__index {
+  font-variant-numeric: tabular-nums; color: var(--accent);
+  font-size: 0.82rem; font-weight: 700; letter-spacing: 0.08em;
+}
+.section__title { font-size: 1.12rem; margin: 0; }
+.section__count { color: var(--muted); font-size: 0.8rem; }
+.section__summary { margin: 0.35rem 0 0; color: var(--muted); font-size: 0.92rem; }
+
+.claims, .warnings, .timeline, .appendix { list-style: none; margin: 0.8rem 0 0; padding: 0; }
+.claim, .warning, .timeline__item, .evidence {
+  padding: 0.7rem 0; border-top: 1px solid var(--line);
+}
+.claim:first-child, .warning:first-child, .timeline__item:first-child, .evidence:first-child { border-top: 0; padding-top: 0.2rem; }
+.claim__text, .warning__text, .timeline__text { margin: 0; }
+.claim__meta, .warning__meta, .timeline__meta, .evidence__meta {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.7rem;
+  margin: 0.35rem 0 0; padding: 0; list-style: none;
+  color: var(--muted); font-size: 0.8rem;
+}
+.claim.is-emphasis .claim__text { font-weight: 600; }
+
+.badge {
+  display: inline-block; padding: 0.05rem 0.5rem;
+  border-radius: 999px; border: 1px solid currentColor;
+  font-size: 0.75rem; font-weight: 600; line-height: 1.5;
+}
+.badge--high { color: var(--ok); }
+.badge--medium { color: var(--warn); }
+.badge--low { color: var(--muted); }
+.badge--severity { color: var(--danger); }
+.badge--kind { color: var(--accent); }
+
+.anchor-ref {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.78rem; text-decoration: none;
+  border: 1px solid var(--line); border-radius: 4px;
+  padding: 0 0.3rem; background: var(--surface-2);
+}
+.anchor-ref:hover { border-color: var(--accent); }
+.anchor-ref.is-active { border-color: var(--accent); color: var(--accent-ink); background: var(--accent); }
+
+.timeline { position: relative; }
+.timeline__at {
+  font-variant-numeric: tabular-nums; font-weight: 600; color: var(--accent);
+  font-size: 0.85rem; display: inline-block; min-width: 5.5rem; margin-right: 0.5rem;
+}
+.timeline__text { display: inline; }
+
+.evidence:target, .evidence.is-focused { background: var(--surface-2); border-radius: 6px; }
+.evidence__head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.45rem; font-size: 0.85rem; }
+.evidence__at { color: var(--muted); }
+.evidence__anchor { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.82rem; font-weight: 600; }
+.evidence__why { margin: 0.3rem 0 0; font-size: 0.92rem; }
+.evidence__where { margin: 0.15rem 0 0; font-size: 0.78rem; color: var(--muted); overflow-wrap: anywhere; }
+.quote {
+  margin: 0.45rem 0 0; padding: 0.4rem 0.7rem;
+  background: var(--surface-2); border-left: 3px solid var(--accent);
+  border-radius: 4px; font-size: 0.92rem; color: var(--ink);
+}
+.quote__note { color: var(--muted); font-size: 0.78rem; }
+
+.empty-state { margin: 0; color: var(--muted); font-size: 0.9rem; font-style: italic; }
+
+.page-footer { margin-top: 2.4rem; padding-top: 0.9rem; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.8rem; }
+.page-footer p { margin: 0.2rem 0; }
+
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; margin: -1px;
+  padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+@media (max-width: 34rem) {
+  .wrap { padding: 0 0.85rem 3rem; }
+  .section { padding: 0.9rem 0.85rem 1rem; }
+  .timeline__at { display: block; min-width: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { scroll-behavior: auto !important; }
+}
+
+@media print {
+  :root { color-scheme: light; --bg: #ffffff; --surface: #ffffff; --surface-2: #f4f1ed; --ink: #000000; --muted: #444444; --line: #bbbbbb; --accent: #6b3a17; }
+  body { font-size: 11pt; line-height: 1.45; background: #ffffff; color: #000000; }
+  .wrap { max-width: none; padding: 0; }
+  .controls, .skip-link, .toc, .status { display: none !important; }
+  .section { break-inside: avoid; border: 1px solid #bbbbbb; margin-top: 1rem; padding: 0.6rem 0.7rem; }
+  .page-header { border-bottom: 1px solid #bbbbbb; }
+  .section, .claim, .warning, .timeline__item, .evidence, .quote { overflow: visible; }
+  a { color: #000000; }
+  .anchor-ref, .badge { border-color: #666666; }
+}
+</style>
+</head>
+<body>
+<a class="skip-link" href="#main">跳到正文 / Skip to content</a>
+
+<div class="wrap">
+  <header class="page-header">
+    <p class="brand">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 3c3.5 4.2 5.5 7 5.5 9.6A5.5 5.5 0 0 1 12 18a5.5 5.5 0 0 1-5.5-5.4C6.5 10 8.5 7.2 12 3Z"></path>
+        <path d="M9.6 13.4h4.8"></path>
+      </svg>
+      Distilly · Person View
+    </p>
+    <h1 id="page-title">个人画像</h1>
+    <p class="page-subtitle" id="page-subtitle">等待 view.json 数据</p>
+    <p class="page-meta" id="page-meta"></p>
+    <div class="controls" role="group" aria-label="页面操作">
+      <button class="button" id="theme-toggle" type="button" aria-pressed="false">深色模式</button>
+      <button class="button" id="export-print" type="button">打印 / 导出 PDF</button>
+      <button class="button" id="export-copy" type="button">复制 Markdown</button>
+      <button class="button" id="export-html" type="button">下载 HTML 快照</button>
+    </div>
+    <p class="status" id="action-status" role="status" aria-live="polite"></p>
+    <nav class="toc" id="toc" aria-label="页面目录"></nav>
+    <p class="privacy-note" id="privacy-note"></p>
+  </header>
+
+  <main id="main" tabindex="-1">
+    <div id="sections" data-sections-root></div>
+  </main>
+
+  <footer class="page-footer">
+    <p>本页为单文件离线产物：内联 CSS/JS/SVG，无外部请求（CSP <code>default-src 'none'</code>）。</p>
+    <p id="footer-note"></p>
+  </footer>
+</div>
+
+<script id="distilly-view-data" type="application/json">@@DISTILLY:VIEW_DATA@@</script>
+<!-- @@DISTILLY:VIEWER_SECTIONS@@ -->
+<!-- @@DISTILLY:VIEWER_THEME@@ -->
+<!-- @@DISTILLY:VIEWER_EXPORT@@ -->
+<!-- @@DISTILLY:VIEWER_FOCUS@@ -->
+</body>
+</html>

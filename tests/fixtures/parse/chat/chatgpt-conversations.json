@@ -1,0 +1,43 @@
+[
+  {
+    "title": "Synthetic cache design chat",
+    "create_time": 1700000000.5,
+    "id": "conv-synthetic-1",
+    "mapping": {
+      "root": { "id": "root", "parent": null, "children": ["m1"], "message": null },
+      "m1": {
+        "id": "m1",
+        "parent": "root",
+        "children": ["m2"],
+        "message": {
+          "id": "m1",
+          "author": { "role": "user" },
+          "create_time": 1700000001.25,
+          "content": { "content_type": "text", "parts": ["How would you key a build cache?"] }
+        }
+      },
+      "m2": {
+        "id": "m2",
+        "parent": "m1",
+        "children": ["m3"],
+        "message": {
+          "id": "m2",
+          "author": { "role": "assistant" },
+          "create_time": 1700000009.75,
+          "content": { "content_type": "text", "parts": ["Include the toolchain version in the cache key."] }
+        }
+      },
+      "m3": {
+        "id": "m3",
+        "parent": "m2",
+        "children": [],
+        "message": {
+          "id": "m3",
+          "author": { "role": "user" },
+          "create_time": 1700000020,
+          "content": { "content_type": "multimodal_text", "parts": ["And the lockfile?", { "content_type": "image_asset_pointer", "asset_pointer": "file-service://synthetic" }] }
+        }
+      }
+    }
+  }
+]

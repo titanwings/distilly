@@ -1,0 +1,372 @@
+/**
+ * `parse/subtitle.mjs` — `.srt` / `.vtt` into per-cue anchored records.
+ */
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { KnowledgeStore } from "../src/knowledge/store.mjs";
+import { loadLedger, recordDocument, resolveLedgerAnchor } from "../src/knowledge/ledger.mjs";
+import { SourceFile, UnrecognizedFormatError } from "../src/parse/common.mjs";
+import { detectSubtitleFormat, formatTimecode, parseSubtitle, parseTimecode } from "../src/parse/subtitle.mjs";
+
+const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "fixtures", "parse", "subtitle");
+
+function load(name, options = {}) {
+  const path = join(FIXTURES, name);
+  return new SourceFile({ path, raw: new Uint8Array(readFileSync(path)), ...options });
+}
+
+/** A file from the licensed public corpus, relative to `public-corpus/`. */
+function loadPublic(relative) {
+  const path = join(FIXTURES, "..", "..", "public-corpus", relative);
+  return new SourceFile({ path, raw: new Uint8Array(readFileSync(path)) });
+}
+
+/** Run a parsed document through the ledger so anchors can be resolved. */
+function record(document) {
+  const store = new KnowledgeStore(mkdtempSync(join(tmpdir(), "distilly-sub-")));
+  const ledger = loadLedger(store);
+  const result = recordDocument(store, ledger, document, { fetched_at: "2024-01-01T00:00:00.000Z" });
+  return { store, ledger, result };
+}
+
+test("timecodes round-trip through parse/format", () => {
+  assert.equal(parseTimecode("00:00:01,500"), 1500);
+  assert.equal(parseTimecode("01:02:03.004"), 3_723_004);
+  assert.equal(parseTimecode("1:02:03,4"), 3_723_400, "a single-digit fraction is tenths");
+  assert.equal(parseTimecode("nonsense"), null);
+  assert.equal(formatTimecode(3_723_004), "01:02:03.004");
+  assert.equal(formatTimecode(0), "00:00:00.000");
+  assert.equal(formatTimecode(Number.NaN), null);
+});
+
+test("a SubRip file is detected and yields one record per cue", () => {
+  const file = load("interview.srt");
+  const detected = detectSubtitleFormat(file);
+  assert.equal(detected.format, "srt");
+  assert.match(detected.reasons[0], /SubRip timecode/);
+
+  const document = parseSubtitle(file);
+  assert.equal(document.format, "srt");
+  assert.equal(document.kind, "subtitle");
+  assert.equal(document.entries.length, 3);
+  assert.deepEqual(document.entries.map((entry) => entry.kind), ["cue", "cue", "cue"]);
+  assert.equal(document.entries[0].text, "大家好，今天我们聊聊构建系统。");
+});
+
+test("a cue's byte range contains its own text and not the next cue's index", () => {
+  const file = load("interview.srt");
+  const raw = Buffer.from(file.raw);
+  const document = parseSubtitle(file);
+
+  for (const entry of document.entries) {
+    const slice = raw.subarray(entry.byteStart, entry.byteEnd).toString("utf8");
+    for (const line of entry.text.split("\n")) {
+      assert.ok(slice.includes(line), `${JSON.stringify(line)} must appear in ${JSON.stringify(slice)}`);
+    }
+  }
+  const first = document.entries[0];
+  const firstSlice = raw.subarray(first.byteStart, first.byteEnd).toString("utf8");
+  assert.equal(firstSlice.includes("2\n"), false, "cue 1 must not swallow cue 2's index");
+  assert.match(firstSlice, /00:00:01,000 --> 00:00:03,500/, "the timecode line is part of the range");
+});
+
+test("WebVTT voice spans and Name: prefixes are the only speaker claims", () => {
+  const document = parseSubtitle(load("talk.vtt"));
+  assert.equal(document.format, "vtt");
+  assert.deepEqual(document.meta.speakers, ["Alice", "Bob"]);
+  assert.equal(document.meta.timecodes[0].speaker, "Alice");
+  assert.equal(document.meta.timecodes[1].speaker, "Bob");
+  assert.equal(document.entries.length, 2, "a cue with no text is not a record");
+});
+
+test("WebVTT cue settings, NOTE blocks and headers are dropped with a warning", () => {
+  const document = parseSubtitle(load("talk.vtt"));
+  const text = document.entries.map((entry) => entry.text).join("\n");
+  assert.equal(/align:|position:|Kind:|Language:/.test(text), false);
+  assert.equal(text.includes("synthetic; no real conversation"), false, "NOTE content is a comment");
+  assert.ok(document.warnings.some((warning) => warning.includes("NOTE block")));
+  assert.ok(document.warnings.some((warning) => warning.includes("header/metadata")));
+  assert.ok(document.warnings.some((warning) => warning.includes("has no text")), "the empty cue is reported");
+});
+
+test("a subtitle with no speaker information says so", () => {
+  const document = parseSubtitle(load("interview.srt"));
+  assert.deepEqual(document.meta.speakers, ["Lin"], "only the strict `Name:` prefix is claimed");
+  const anonymous = parseSubtitle(load("crlf.srt"));
+  assert.ok(anonymous.warnings.some((warning) => warning.includes("no speaker could be read")));
+});
+
+test("CRLF payloads parse and their byte ranges stay exact", () => {
+  const file = load("crlf.srt");
+  const document = parseSubtitle(file);
+  assert.equal(document.entries.length, 2);
+  assert.deepEqual(document.entries.map((entry) => entry.text), ["CRLF cue text.", "Second cue."]);
+  const raw = Buffer.from(file.raw);
+  const slice = raw.subarray(document.entries[0].byteStart, document.entries[0].byteEnd).toString("utf8");
+  assert.ok(slice.includes("CRLF cue text."));
+  assert.equal(slice.endsWith("\r"), false, "the anchor must not end mid-CRLF");
+  assert.ok(slice.includes("CRLF cue text."));
+});
+
+test("a UTF-8 BOM is skipped and the offsets still point at the payload", () => {
+  const file = load("bom.srt");
+  const document = parseSubtitle(file);
+  assert.equal(document.entries.length, 1);
+  assert.equal(document.entries[0].text, "BOM cue.");
+  const raw = Buffer.from(file.raw);
+  const slice = raw.subarray(document.entries[0].byteStart, document.entries[0].byteEnd).toString("utf8");
+  assert.ok(slice.startsWith("1\n00:00:01,000"), `expected the index line, saw ${JSON.stringify(slice)}`);
+  assert.ok(slice.includes("BOM cue."));
+});
+
+test("an empty, whitespace-only or prose file is not recognised", () => {
+  for (const name of ["empty.srt", "whitespace.srt", "not-subtitles.srt"]) {
+    assert.throws(() => parseSubtitle(load(name)), UnrecognizedFormatError, name);
+  }
+  assert.throws(() => parseSubtitle(load("not-subtitles.srt")), /not a recognised subtitle file/);
+});
+
+test("a WebVTT cue without the WEBVTT header is still recognised", () => {
+  const file = new SourceFile({
+    path: "/tmp/headerless.vtt",
+    raw: Buffer.from("00:00:01.000 --> 00:00:02.000\nHeaderless cue.\n", "utf8"),
+  });
+  const document = parseSubtitle(file);
+  assert.equal(document.format, "vtt");
+  assert.equal(document.entries[0].text, "Headerless cue.");
+});
+
+test("a single cue spanning one very long line is anchored whole", () => {
+  const long = "word ".repeat(60_000).trim();
+  const file = new SourceFile({
+    path: "/tmp/long.srt",
+    raw: Buffer.from(`1\n00:00:00,000 --> 00:00:10,000\n${long}\n`, "utf8"),
+  });
+  const document = parseSubtitle(file);
+  assert.equal(document.entries.length, 1);
+  assert.equal(document.entries[0].text.length, long.length);
+});
+
+test("a duplicate cue index is reported, not silently renumbered", () => {
+  const file = new SourceFile({
+    path: "/tmp/dup.srt",
+    raw: Buffer.from("1\n00:00:01,000 --> 00:00:02,000\nfirst\n\n1\n00:00:03,000 --> 00:00:04,000\nsecond\n", "utf8"),
+  });
+  const document = parseSubtitle(file);
+  assert.equal(document.entries.length, 2);
+  assert.ok(document.warnings.some((warning) => warning.includes("cue index 1 appears more than once")));
+});
+
+test("a backwards timecode is kept verbatim and reported", () => {
+  const file = new SourceFile({
+    path: "/tmp/back.srt",
+    raw: Buffer.from("1\n00:00:05,000 --> 00:00:02,000\nbackwards\n", "utf8"),
+  });
+  const document = parseSubtitle(file);
+  assert.equal(document.entries.length, 1);
+  assert.ok(document.warnings.some((warning) => warning.includes("before it starts")));
+  assert.equal(document.meta.timecodes[0].start, 5000);
+  assert.equal(document.meta.timecodes[0].end, 2000);
+});
+
+test("a GBK subtitle decodes when the payload is valid Shift_JIS-free GBK", () => {
+  const raw = Buffer.concat([Buffer.from("1\n00:00:01,000 --> 00:00:02,000\n", "utf8"), Buffer.from([0x88, 0x82, 0x0a])]);
+  // A declared charset always wins; without one the decoder refuses to choose
+  // between GBK/Big5/Shift_JIS and reports U+FFFD instead (see anchors tests).
+  const file = new SourceFile({ path: "/tmp/gbk.srt", raw, preferred: "gbk" });
+  const document = parseSubtitle(file);
+  assert.equal(document.fileEncoding, "gbk");
+  assert.ok(document.entries[0].text.includes("垈"));
+});
+
+test("anchors produced by the ledger resolve back to the cue bytes", () => {
+  const file = load("interview.srt");
+  const document = parseSubtitle(file);
+  const { store, ledger } = record(document);
+  const raw = store.readRaw("subtitle", "interview.srt");
+
+  const second = resolveLedgerAnchor(ledger, "k0001:t2");
+  assert.ok(second, "k0001:t2 must resolve");
+  assert.equal(second.kind, "cue");
+  const slice = Buffer.from(raw).subarray(second.byteStart, second.byteEnd).toString("utf8");
+  assert.ok(slice.includes("我先说结论"));
+  assert.ok(slice.includes("工具链版本。"));
+
+  const paragraph = resolveLedgerAnchor(ledger, "k0002");
+  assert.ok(paragraph.text.includes("我先说结论"));
+});
+
+test("the text file lists one anchored paragraph per cue", () => {
+  const document = parseSubtitle(load("crlf.srt"));
+  const { result } = record(document);
+  const text = readFileSync(result.written.text.path, "utf8");
+  assert.match(text, /^\[k0001\] CRLF cue text\./);
+  assert.match(text, /\[k0002\] Second cue\./);
+  assert.equal(document.entries.length, 2, "the timecodes live in meta.timecodes, not in the prose");
+});
+
+test("parsing is deterministic: two runs produce identical documents", () => {
+  const first = JSON.stringify(parseSubtitle(load("talk.vtt")));
+  const second = JSON.stringify(parseSubtitle(load("talk.vtt")));
+  assert.equal(first, second);
+});
+
+
+/* ------------------------------------------------------------------ */
+/* real captions                                                       */
+/* ------------------------------------------------------------------ */
+
+test("a real closed-caption track: speakers split where they change mid-cue", () => {
+  // The public-domain corpus in `public-corpus/us-house-floor-2009-07-29` is a real
+  // C-SPAN caption track. Unlike the synthetic fixtures it does not put a name at
+  // the start of every cue: the speaker changes mid-sentence (`… MINUTES. MR. MICA:
+  // I thank the gentleman.`) and a line may open with a dialogue dash. Reading one
+  // speaker per cue attributed almost nothing, and the per-speaker derivations had
+  // nothing to work with.
+  const file = loadPublic("us-house-floor-2009-07-29/transcript.srt");
+  const document = parseSubtitle(file);
+
+  const speakers = [...new Set(document.entries.map((entry) => entry.speaker).filter(Boolean))];
+  assert.ok(speakers.length >= 5, `expected several named speakers, got ${speakers.join(", ")}`);
+  assert.ok(speakers.includes("MR. LEWIS"), `MR. LEWIS must be recognised, got ${speakers.join(", ")}`);
+
+  for (const speaker of speakers) {
+    assert.equal(speaker.startsWith("-"), false, `dialogue dash kept in ${JSON.stringify(speaker)}`);
+    assert.equal(
+      /^[A-Z]+\b[^.]*\.\s+[A-Z]/.test(speaker.replace(/^(MR|MRS|MS|DR|SEN|REP|HON)\./i, "")),
+      false,
+      `a swallowed sentence survived in the speaker name: ${JSON.stringify(speaker)}`,
+    );
+  }
+
+  // Every cue's text still sits inside its own byte range.
+  const raw = Buffer.from(file.raw);
+  for (const entry of document.entries.slice(0, 200)) {
+    const slice = raw.subarray(entry.byteStart, entry.byteEnd).toString("utf8");
+    for (const line of entry.text.split("\n")) {
+      assert.ok(slice.includes(line), `${JSON.stringify(line.slice(0, 40))} must be in its range`);
+    }
+  }
+});
+
+
+test("a mid-cue speaker change is found after a long sentence too", () => {
+  // The name pattern is greedy: for a name reached across more than ~24 characters
+  // the match starts mid-word, so the sentence-boundary test used to look at the
+  // *match* start (`…ORDE|R. LEWIS`, bytes `ER`) instead of at the name, and threw
+  // the change away. A short prefix (`MINUTES. MR. MICA:`) passed, which is why the
+  // defect survived the first real-caption run: only the long-prefix shape failed.
+  const raw = Buffer.from(
+    [
+      "1",
+      "00:00:01,000 --> 00:00:05,000",
+      "THE CHAIR: THE HOUSE WILL BE IN ORDER. MR. LEWIS: I THANK THE GENTLEMAN.",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  const document = parseSubtitle(new SourceFile({ path: "/tmp/mid-cue.srt", raw: new Uint8Array(raw) }));
+
+  assert.equal(document.entries.length, 2, "one record per speaker run");
+  assert.deepEqual(
+    document.entries.map((entry) => entry.speaker),
+    ["THE CHAIR", "MR. LEWIS"],
+  );
+  assert.equal(document.entries[0].text, "THE CHAIR: THE HOUSE WILL BE IN ORDER.", "the head keeps the first speaker's sentence");
+  assert.equal(document.entries[1].text, "I THANK THE GENTLEMAN.");
+
+  // Both runs still cite bytes that are in the payload.
+  const text = raw.toString("utf8");
+  for (const entry of document.entries) {
+    assert.ok(text.includes(entry.text), `${JSON.stringify(entry.text)} must be in the payload`);
+  }
+});
+
+/** A SubRip payload built from `[speaker, text]` pairs, one cue each. */
+function srtFrom(pairs) {
+  const pad = (value, width) => String(value).padStart(width, "0");
+  const timecode = (second) => `00:${pad(Math.floor(second / 60), 2)}:${pad(second % 60, 2)},000`;
+  return Buffer.from(
+    pairs
+      .map(([who, text], index) => `${index + 1}\n${timecode(index * 3 + 1)} --> ${timecode(index * 3 + 2)}\n${who}${text}`)
+      .join("\n\n") + "\n",
+    "utf8",
+  );
+}
+
+test("a Chinese transcript's full-width colon is read as a speaker", () => {
+  // `Name: text` is how an English caption track writes a speaker; a Chinese
+  // meeting export writes `说话人 1：…` with a full-width colon and no space. Both
+  // separators used to miss the pattern entirely, so a Chinese transcript yielded
+  // **zero** speakers and every per-speaker derivation came out empty — the corpus
+  // looked unlabelled when it was labelled on every single line.
+  const raw = srtFrom([
+    ["说话人 1：", "今天评审缓存改造，先请张三讲结论。"],
+    ["说话人 2：", "结论是键里必须带工具链版本。"],
+    ["说话人 1：", "那就按这个方案走。"],
+  ]);
+  const document = parseSubtitle(new SourceFile({ path: "/tmp/zh.srt", raw: new Uint8Array(raw) }));
+
+  assert.deepEqual(document.meta.speakers, ["说话人 1", "说话人 2"]);
+  assert.deepEqual(
+    document.entries.map((entry) => entry.speaker),
+    ["说话人 1", "说话人 2", "说话人 1"],
+  );
+  // The label stays part of the text: an anchor's span has to be a slice of the payload.
+  assert.match(document.entries[0].text, /^说话人 1：今天评审/);
+});
+
+test("a repeated name and a diarisation role are speakers; a one-off colon is not", () => {
+  // A full-width colon also ends an ordinary sentence, so `注意：` and a speaker are
+  // the same shape. Repetition is the evidence that separates them — a person in a
+  // transcript says something more than once — and a diarisation role needs none.
+  const noteOnce = parseSubtitle(
+    new SourceFile({
+      path: "/tmp/note.srt",
+      raw: new Uint8Array(srtFrom([["注意：", "缓存键必须包含版本。"], ["第二句补充说明。", ""]])),
+    }),
+  );
+  assert.deepEqual(noteOnce.meta.speakers, [], "a one-off `注意：` is a sentence, not a speaker");
+
+  const rolesOnce = parseSubtitle(
+    new SourceFile({
+      path: "/tmp/role.srt",
+      raw: new Uint8Array(srtFrom([["SPEAKER_00:", "我们先对齐一下。"], ["谢谢大家。", ""]])),
+    }),
+  );
+  assert.deepEqual(rolesOnce.meta.speakers, ["SPEAKER_00"], "a diarisation role is unambiguous");
+
+  const repeated = parseSubtitle(
+    new SourceFile({
+      path: "/tmp/repeat.srt",
+      raw: new Uint8Array(srtFrom([["张三：", "我先说结论。"], ["李四：", "我补充一点。"], ["张三：", "那我来收口。"]])),
+    }),
+  );
+  // 张三 labels two cues and is claimed; 李四 labels one and is **not**. That is the
+  // price of the repetition rule, paid deliberately: in a real meeting every
+  // participant speaks more than once (the 26-cue Chinese fixture recognises all
+  // three of its speakers), while a full-width colon in ordinary prose occurs once.
+  // An anchor attributed to the wrong person is worse than one attributed to nobody,
+  // so the ambiguous separator errs towards nobody.
+  assert.deepEqual(repeated.meta.speakers, ["张三"], "a single-occurrence name is not claimed");
+
+  const twice = parseSubtitle(
+    new SourceFile({
+      path: "/tmp/twice.srt",
+      raw: new Uint8Array(
+        srtFrom([
+          ["张三：", "我先说结论。"],
+          ["李四：", "我补充一点。"],
+          ["李四：", "还有第二点。"],
+          ["张三：", "那我来收口。"],
+        ]),
+      ),
+    }),
+  );
+  assert.deepEqual(twice.meta.speakers, ["张三", "李四"], "one more line is all it takes");
+});

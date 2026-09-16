@@ -1,0 +1,12 @@
+[
+  {
+    "uuid": "claude-synthetic-1",
+    "name": "Synthetic review chat",
+    "created_at": "2024-02-03T04:05:06.000Z",
+    "chat_messages": [
+      { "uuid": "c1", "sender": "human", "created_at": "2024-02-03T04:05:06.000Z", "text": "Should the ledger be append only?" },
+      { "uuid": "c2", "sender": "assistant", "created_at": "2024-02-03T04:05:30.000Z", "text": "Yes: an entry that changes invalidates every citation pointing into it." },
+      { "uuid": "c3", "sender": "human", "created_at": "2024-02-03T04:06:00.000Z", "content": [{ "type": "text", "text": "That matches what I expected." }] }
+    ]
+  }
+]

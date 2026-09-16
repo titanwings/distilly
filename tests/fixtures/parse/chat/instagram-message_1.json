@@ -1,0 +1,9 @@
+{
+  "participants": [ { "name": "Alice Example" }, { "name": "Bob Sample" } ],
+  "messages": [
+    { "sender_name": "Alice Example", "timestamp_ms": 1712000000000, "content": "Did the export include reactions?" },
+    { "sender_name": "Bob Sample", "timestamp_ms": 1712000060000, "content": "No, only messages with text." },
+    { "sender_name": "Bob Sample", "timestamp_ms": 1712000120000, "content": "", "photos": [ { "uri": "synthetic.jpg" } ] }
+  ],
+  "title": "Alice Example and Bob Sample"
+}

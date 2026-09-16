@@ -29,8 +29,27 @@ playwright-data/
 /tmp/feishu_*.txt
 /tmp/email_*.txt
 /tmp/dingtalk_*.txt
+
+# Every `knowledge/` is user data, wherever the person directory lives. This is an
+# unanchored directory pattern, so it also matches source and fixture directories of
+# the same name; the re-includes below must come *after* it, otherwise the later
+# `knowledge/` rule excludes them again. Tracked files are unaffected either way,
+# so only a newly added module would be lost — and it would be lost silently.
 knowledge/
+# ...except the synthetic ledger fixtures, which are test data and must be tracked
+!src/derive/fixtures/**/knowledge/
+!src/derive/fixtures/**/knowledge/**
+# ...and except the source modules: `src/knowledge/**` is code, not an export
+!src/knowledge/
+!src/knowledge/**
 
 # OS
 .DS_Store
 Thumbs.db
+
+# 本地证据（截图/回执/diff），不入库
+dst-evidence/
+# 根级渲染产物：契约 §2 把页面放在 evidence/renders/。
+# 前导斜杠是必须的 —— 裸写 evidence/ 会匹配 docs/evidence/，那里的文字证据是要入库的。
+/evidence/
+*.evidence.local
