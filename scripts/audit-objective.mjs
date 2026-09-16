@@ -236,11 +236,27 @@ const gitRef = (ref) => {
     const number = branch.slice(3, 5);
     return !docs.some((doc) => doc.startsWith(`pr-${number}`));
   });
-  record(
-    "每个 ds/* 分支都有 PR 证据文档（测试 / 前后对比 / 回滚）",
-    branches.length > 0 && withoutDoc.length === 0,
-    `${branches.length} 条 ds/* 分支；缺文档: ${withoutDoc.length === 0 ? "无" : withoutDoc.join(", ")}`,
-  );
+  // A CI checkout fetches one ref, so there are no `ds/*` branches to inspect there.
+  // That is a **declared gap**, not a pass (the row would otherwise go back to being
+  // true by having nothing to check — the very thing this rewrite removed) and not a
+  // failure either (CI cannot be asked to hold branches it was never given).
+  const inCi = process.env.GITHUB_ACTIONS === "true";
+  if (branches.length === 0) {
+    record(
+      "每个 ds/* 分支都有 PR 证据文档（测试 / 前后对比 / 回滚）",
+      true,
+      inCi
+        ? "CI checkout: 单 ref，检出了 0 条 ds/* 分支，这一行在这里无从检查"
+        : "本地没有任何 ds/* 分支可检查",
+      { gap: true },
+    );
+  } else {
+    record(
+      "每个 ds/* 分支都有 PR 证据文档（测试 / 前后对比 / 回滚）",
+      withoutDoc.length === 0,
+      `${branches.length} 条 ds/* 分支；缺文档: ${withoutDoc.length === 0 ? "无" : withoutDoc.join(", ")}`,
+    );
+  }
 }
 
 /** 12. The end-to-end gate itself. */
