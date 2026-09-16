@@ -196,25 +196,37 @@ const gitRef = (ref) => {
 
 /** 10. Screenshots stay out of the repository. */
 {
-  const ignored = ["dst-evidence", "evidence/renders"].map((path) => {
+  // Every intended path has to be ignored, and the probe has to be a path *inside*
+  // the ignored directory. Two ways this row used to pass while proving nothing:
+  // it asked about `dst-evidence` (no trailing slash), which the directory pattern
+  // `dst-evidence/` does not match when the directory is absent — the answer was
+  // `false` and the row still went green because it accepted **any** of the probes
+  // (`.some`); and `evidence/renders` covered for it.
+  const probes = ["dst-evidence/screenshot.png", "evidence/renders/receipt.json"];
+  const ignored = probes.map((path) => {
     try {
       git("check-ignore", "-q", path);
-      return true;
+      return { path, ok: true };
     } catch {
-      return false;
+      return { path, ok: false };
     }
   });
   const trackedEvidence = git("ls-files").split("\n").filter((path) => /dst-evidence\/|screenshots\/.*\.png$/.test(path));
   record(
     "截图不入库：证据目录被忽略，仓库里没有 PNG 证据",
-    ignored.some(Boolean) && trackedEvidence.length === 0,
-    `checks: ${ignored.join(", ")}; tracked evidence files: ${trackedEvidence.length}`,
+    ignored.every((probe) => probe.ok) && trackedEvidence.length === 0,
+    `${ignored.map((probe) => `${probe.path}: ${probe.ok}`).join(", ")}; tracked evidence files: ${trackedEvidence.length}`,
   );
 }
 
-/** 11. Per-PR evidence: every merged branch has a document. */
+/** 11. Per-PR evidence: every per-feature branch has a document. */
 {
-  const branches = git("branch", "--merged", "HEAD")
+  // `git branch --merged HEAD` matched **zero** branches — none of the 19 per-feature
+  // branches is merged — so the row was true by having nothing to check, and the
+  // claim it makes ("every PR has a test / before-after / rollback document") was
+  // never verified. The population that matters is every local `ds/NN-*` branch,
+  // merged or not.
+  const branches = git("branch", "--list", "ds/*")
     .split("\n")
     .map((line) => line.replace(/^[*+]\s*/, "").trim())
     .filter((name) => /^ds\/\d\d-/.test(name))
@@ -225,9 +237,9 @@ const gitRef = (ref) => {
     return !docs.some((doc) => doc.startsWith(`pr-${number}`));
   });
   record(
-    "每个已合并分支都有 PR 证据文档（测试 / 前后对比 / 回滚）",
-    withoutDoc.length === 0,
-    `${branches.length} merged ds/* branches; missing docs: ${withoutDoc.length === 0 ? "none" : withoutDoc.join(", ")}`,
+    "每个 ds/* 分支都有 PR 证据文档（测试 / 前后对比 / 回滚）",
+    branches.length > 0 && withoutDoc.length === 0,
+    `${branches.length} 条 ds/* 分支；缺文档: ${withoutDoc.length === 0 ? "无" : withoutDoc.join(", ")}`,
   );
 }
 
