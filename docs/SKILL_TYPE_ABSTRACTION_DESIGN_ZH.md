@@ -1,5 +1,11 @@
 # Skill 类型抽象设计
 
+> ⚠️ **这份文件描述的是 v1（Python）时代的形状**：目录是 `colleagues/{slug}`、入口是
+> `tools/*.py`、实现是 Python。v2 已迁移到 Node 单栈：目录是 `skills/<family>/<slug>`、
+> 入口是 `bin/distilly.mjs`、性格层是 Layer 0–5、schema 是 v4。
+> **产品意图仍然有效，文件路径与实现细节请以 `docs/v2/CONTRACT.md` 与 `docs/v2/STATUS.md` 为准。**
+> 迁移对照表见 `SKILL.md` 与 `docs/v2/MIGRATION.md`。
+
 最后更新：2026-04-16
 
 ## 1. 背景

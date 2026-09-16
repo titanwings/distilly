@@ -18,6 +18,55 @@
 
 Distilly is a local-first product for turning a person's source material, working habits, judgment, and voice into a versioned **Person Profile for Agents**. The profile can be recalled temporarily during a run or explicitly installed as a long-lived host Skill. The storage authority stays local; no additional model API key is required.
 
+## 这一支（`dot-skill-test`）：人物 Skill + 证据脊柱
+
+**把一个人的原材料蒸馏成一个可调用的人物 Skill，外加一份每条结论都能回指到原文的画像页。**
+零运行时依赖，只要 Node ≥ 20。
+
+| 交付物 | 路径 |
+| --- | --- |
+| 人物 Skill（可直接装进宿主运行） | `skills/<family>/<slug>/SKILL.md` + `work.md` `persona.md` `work_skill.md` `persona_skill.md` `manifest.json` `meta.json` |
+| 画像页（单文件、离线、双主题） | `views/<slug>.html` + `evidence/renders/receipt.json` |
+
+三个 family：`colleague` / `relationship` / `celebrity`。
+八个宿主：Claude Code · Codex · opencode · OpenClaw · Hermes · **DeepSeek Harness** · Grok Build · Pi。
+
+**这份实现与那条 Plugin 路线的区别，一句话**：它不追求"像不像"，它保证"凭什么这么说"——
+每条结论都能回指到原文的字节区间（`[k00NN]` 锚点），派生可复跑（同一输入两次字节相同），
+交付物由机械门禁压住（验收 17 项，含"产物齐 / Layer 0–5 齐 / 悬空锚点=0"）。
+
+### 装到一个宿主（以 DeepSeek Harness 为例）
+
+```bash
+git clone https://github.com/titanwings/distilly.git && cd distilly
+git checkout dot-skill-test
+node bin/distilly.mjs install deepseek-harness     # → $DSH_HOME/skills/distilly
+```
+
+装完即可被 DSH 发现（技能目录被 watch，无需重启），输入 `/distilly` 或直接让 Agent 开始蒸馏。
+其它宿主把 `deepseek-harness` 换成 `claude-code` / `codex` / `opencode` / `openclaw` / `hermes` /
+`grok-build` / `pi`；每条宿主的确切路径与命令见 [`docs/v2/HOSTS.md`](docs/v2/HOSTS.md)。
+
+### 怎么验
+
+```bash
+npm test                       # 391 项，Node 20 与 22 各一遍
+node scripts/acceptance.mjs --corpus tests/fixtures/public-corpus/synthetic-interview --person lin-gong   # 17/17
+DISTILLY_PLAYWRIGHT_ROOT=<含 node_modules 的目录> node scripts/audit-objective.mjs                        # 15/15
+```
+
+**当前状态、已知缺口、分支与 PR 清单**：[`docs/v2/STATUS.md`](docs/v2/STATUS.md)。
+契约 [`docs/v2/CONTRACT.md`](docs/v2/CONTRACT.md) · 验收 [`docs/v2/ACCEPTANCE.md`](docs/v2/ACCEPTANCE.md)。
+
+---
+
+## 另一条产品线：`distilly-plugin`（Plugin Developer Preview）
+
+> **下面这一节以及其后的「Install the Developer Preview / Host compatibility / The first usable
+> flow / Host status / Local material formats」各节，描述的不是本分支的代码**，而是
+> `distilly-plugin` 分支上的 Plugin（MCP / Panel / SQLite）路线。本分支不构建、也不运行它们；
+> 保留在这里只是不让那条线的信息丢失。
+
 This `distilly-plugin` branch carries the unreleased `0.1.0-preview.1` Developer Preview; the repository's default branch is `dot-skill`, the separate legacy implementation, so a bare clone lands on that line instead of this one. Codex, OpenClaw `2026.3.24`, and Hermes `v0.9.0` each have an immutable real-host transport-capacity fixture. The OpenClaw and Hermes measurements use a deterministic synthetic fixture server through the real host executable, model, and MCP transport; they do not by themselves certify packaged restart or the full product lifecycle. Setup remains fail-closed for any unrecorded host version or changed release tuple. This branch is not a tagged release or an npm package yet.
 
 [Chinese](docs/lang/README_ZH.md) · [Español](docs/lang/README_ES.md) · [Deutsch](docs/lang/README_DE.md) · [日本語](docs/lang/README_JA.md) · [한국어](docs/lang/README_KO.md) · [Português](docs/lang/README_PT.md) · [Русский](docs/lang/README_RU.md)
