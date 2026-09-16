@@ -131,5 +131,7 @@ node scripts/check_release.mjs && node scripts/prompt-lint.mjs && node scripts/g
    `ds/**` 并推到各分支，所以现在跑得起来；base 结构未改。
 5. **`docs/PRD.md` 与 `docs/SKILL_TYPE_ABSTRACTION_DESIGN*.md` 描述的是 v1（Python）形状**
    （`colleagues/{slug}`、`tools/*.py`），未随 v2 重写；两份文件顶部已加说明指向 v2。
-6. **`README.md` 的主体讲的是另一条产品线**（Plugin Developer Preview / MCP / Panel），
-   与本分支的 Skill + CLI 实现不是一回事；顶部已加说明并分区。
+6. **`docs/evidence/pr-NN-*.md` 是各功能当时的历史证据**：其中 `pr-21` 与 `pr-13` 的结论
+   已被后续工作推翻，两份文件末尾都补了更正章节；其余文件的数字仍然成立。
+7. **`README.md` 已分区**：本分支（Skill + CLI）在前，`distilly-plugin` 那条 Plugin 线
+   明确划到「另一条产品线」标题下并注明不在本分支运行。
