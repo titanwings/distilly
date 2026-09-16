@@ -144,3 +144,82 @@ test("doctor counts what the generated Skill cites, not only the derived layer",
     rmSync(base, { recursive: true, force: true });
   }
 });
+
+/** base/skills/colleague/demo with a ledger of N anchors and a per-speaker voice claim. */
+function shapeFixture({ anchors, speakers }) {
+  const base = mkdtempSync(join(tmpdir(), "dst-shape-"));
+  const skillDir = join(base, "skills", "colleague", "demo");
+  mkdirSync(join(skillDir, "knowledge"), { recursive: true });
+  mkdirSync(join(skillDir, "evidence", "derived"), { recursive: true });
+  const ids = Array.from({ length: anchors }, (_, index) => `k${String(index + 1).padStart(4, "0")}`);
+  writeFileSync(
+    join(skillDir, "knowledge", "index.json"),
+    `${JSON.stringify([{ id: "k0001", kind: "subtitle", bytes: 1, sha256: "a".repeat(64), anchors: ids }], null, 2)}\n`,
+    "utf8",
+  );
+  const by_speaker = {};
+  for (const [name, samples] of Object.entries(speakers)) by_speaker[name] = { samples };
+  writeFileSync(
+    join(skillDir, "evidence", "derived", "voice.json"),
+    `${JSON.stringify({ kind: "voice", claims: [{ id: "voice.sentence_length", value: { by_speaker } }] }, null, 2)}\n`,
+    "utf8",
+  );
+  return base;
+}
+
+test("the corpus shape check passes on a corpus that can carry a person", () => {
+  // 40 citable units, three speakers, three quarters of the units attributable and a
+  // clear lead — a meeting in which one person is actually the subject.
+  const base = shapeFixture({ anchors: 40, speakers: { 张三: 15, 李四: 10, 主持人: 5 } });
+  try {
+    const run = runCli(["doctor", "--base-dir", base, "--require-shape", "--json"]);
+    assert.equal(run.status, 0, run.stderr);
+    const receipt = parseReceipt(run.stdout);
+    assert.equal(receipt.shape.length, 1);
+    assert.equal(receipt.shape[0].verdict, "PASS");
+    assert.equal(receipt.shape[0].units, 40);
+    assert.equal(receipt.shape[0].attributed_units, 30);
+    assert.deepEqual(receipt.shape[0].reasons, []);
+    assert.equal(receipt.verdict, "PASS");
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test("the corpus shape check catches a multi-speaker corpus nobody can be cut out of", () => {
+  // The real failure this exists for: a 47-minute floor proceeding, 2744 anchors, 18
+  // speakers, 3% of units attributable. It ran the whole five-step mainline and
+  // produced a portrait of a room, because nothing asked "is this the right material"
+  // before Distill. Without `--require-shape` the verdict is reported only; with it,
+  // the command fails.
+  const base = shapeFixture({ anchors: 100, speakers: { A: 2, B: 1, C: 1 } });
+  try {
+    const reported = runCli(["doctor", "--base-dir", base, "--json"]);
+    assert.equal(reported.status, 0, "reporting a bad shape is not itself a failure");
+    const soft = parseReceipt(reported.stdout);
+    assert.equal(soft.shape[0].verdict, "FAIL");
+    assert.equal(soft.ok, true);
+    assert.match(soft.shape[0].reasons.join("\n"), /只有 4% 的单元能归到某个说话人/);
+    assert.match(soft.shape[0].reasons.join("\n"), /不要从会议流水里切人/);
+
+    const gated = runCli(["doctor", "--base-dir", base, "--require-shape", "--json"]);
+    assert.equal(gated.status, 1, "--require-shape turns the verdict into a gate");
+    const hard = parseReceipt(gated.stdout);
+    assert.equal(hard.ok, false);
+    assert.equal(hard.verdict, "FAIL");
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test("too little material fails the shape check before quality is even discussed", () => {
+  const base = shapeFixture({ anchors: 5, speakers: {} });
+  try {
+    const receipt = parseReceipt(runCli(["doctor", "--base-dir", base, "--json"]).stdout);
+    assert.equal(receipt.shape[0].verdict, "FAIL");
+    assert.match(receipt.shape[0].reasons.join("\n"), /可引用单元只有 5 个，低于 20/);
+    assert.match(receipt.shape[0].notes.join("\n"), /没有说话人标注/);
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});

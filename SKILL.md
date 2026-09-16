@@ -166,6 +166,19 @@ skills/<family>/<slug>/
 **完成判据**：`knowledge/index.json` 里每个落地来源一条账本条目（含 `id`、`kind`、`origin`、`fetched_at`、`bytes`、`sha256`、`credentialed`、`method`、`warnings[]`）；每个 `knowledge/text/<source>.md` 至少 1 个锚点；回执 `inputs[]`/`outputs[]` 的 sha256 与账本一致；不可用渠道进 `unavailable[]`。
 **失败怎么办**：命令非零退出时，把命令原文、stderr、补救步骤（例如缺凭据要配置哪个 `~/.distilly/*_config.json`）告诉用户，然后停下等指示；如果 0 条来源落地，不要进入 Step 2。
 
+### 第 1.5 步：语料体检（进入 Derive 之前）
+
+1. 采集完成后先跑 `distilly doctor --require-shape`，读回执里的 `shape[]`。
+2. `shape[].verdict === "FAIL"` 时**停下**，把 `shape[].reasons[]` 原文告诉用户，并说明要补什么
+   （典型：这是多人材料但只有 3% 的单元能归到某个说话人——需要这个人自己的产出：
+   本人访谈/演讲字幕、本人文章、本人邮件，而不是会议流水）。
+3. 常见阈值（写在 `shape[].reasons[]` 里，不用背）：可引用单元 < 20 → FAIL；多人材料但可归属
+   单元 < 40%，或最活跃的人 < 20% → FAIL。没有说话人标注**不**判失败（本人文章、单人录音是正常的）。
+4. `verdict` 是 `PASS` 才继续 Step 2。
+
+**为什么有这一步**：不先问"这份材料撑不撑得起一个人"，就会一路跑到 Step 4，产出的是
+"会议室的画像"而不是"这个人的画像"。这件事真实发生过一次。
+
 ### Step 2：Derive（派生）
 
 1. 派生之前不要读 `evidence/derived/*`——先跑 `distilly retrospect`。
@@ -502,6 +515,20 @@ No step may degrade silently: either fix it, or state the failure in the user-fa
 
 **Completion criteria**: `knowledge/index.json` has one ledger entry per grounded source (with `id`, `kind`, `origin`, `fetched_at`, `bytes`, `sha256`, `credentialed`, `method`, `warnings[]`); every `knowledge/text/<source>.md` has at least one anchor; receipt `inputs[]`/`outputs[]` sha256 matches the ledger; unavailable channels appear in `unavailable[]`.
 **On failure**: when a command exits non-zero, report the exact command, its stderr, and the remedy (for example which `~/.distilly/*_config.json` must be configured), then stop and wait for instructions; if 0 sources landed, do not enter Step 2.
+
+### Step 1.5: Corpus shape check (before Derive)
+
+1. Once collection is done, run `distilly doctor --require-shape` and read `shape[]` in the receipt.
+2. On `shape[].verdict === "FAIL"` **stop**, quote `shape[].reasons[]` to the user, and say what to add
+   (typically: multi-speaker material with only 3% of units attributable — ask for that person's own
+   output: their interviews/talks, their writing, their mail, not a meeting stream).
+3. The thresholds live in `shape[].reasons[]`, so nothing has to be memorised: fewer than 20 citable
+   units → FAIL; multi-speaker material with under 40% attributable units, or a top speaker under 20%
+   → FAIL. Missing speaker labels is **not** a failure (a person's own writing or a solo recording is fine).
+4. Only continue to Step 2 on `PASS`.
+
+**Why this step exists**: without asking "can this material carry a person at all", the run goes all the
+way to Step 4 and produces a portrait of a room instead of a portrait of a person. That happened once.
 
 ### Step 2: Derive
 

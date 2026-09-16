@@ -360,6 +360,26 @@ try {
       (inspected.dangling.length ? `: ${inspected.dangling.slice(0, 5).join(', ')}` : ''),
   );
 
+  // 语料体检：**报告** verdict 与理由。这里不把它当门槛，因为验收的第二份语料
+  // （C-SPAN 议会记录）本来就是"错误形状"的样本 —— 它必须被判 FAIL 才说明这个检查有用。
+  // 机械判据是"FAIL 必须给理由"，不是"必须 PASS"：不允许静默降级。
+  const shapeRun = distilly(['doctor', '--base-dir', workdir, '--json']);
+  const shapeReceipt = parseReceipt(shapeRun.stdout);
+  const shape = shapeReceipt?.shape?.[0] ?? null;
+  const shapeOk =
+    shapeRun.status === 0 &&
+    shape !== null &&
+    ['PASS', 'FAIL'].includes(shape.verdict) &&
+    (shape.verdict === 'PASS' || (shape.reasons ?? []).length > 0);
+  record(
+    '语料体检给出 verdict（FAIL 必须说明理由）',
+    shapeOk,
+    shape
+      ? `${shape.verdict} · units=${shape.units} speakers=${shape.speakers} attributed=${shape.attributed_units}` +
+        (shape.verdict === 'FAIL' ? ` · ${shape.reasons.length} 条理由` : '')
+      : '无 shape 回执',
+  );
+
   const doctor = distilly(['doctor', '--base-dir', workdir, '--json']);
   const doctorReceipt = parseReceipt(doctor.stdout);
   const citedRate = doctorReceipt ? `${doctorReceipt.anchors?.cited ?? 0}/${doctorReceipt.anchors?.total ?? 0}` : '无回执';
