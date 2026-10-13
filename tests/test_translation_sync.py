@@ -23,9 +23,9 @@ EXTERNAL_LINK = re.compile(r'(?:\]\(|href=")(https?://[^)"\s]+)')
 LOCALIZED_HOSTS = ("img.shields.io",)
 
 
-def _sections(content: str) -> list:
-    """Return the leading emoji of each `##` heading, in order."""
-    return SECTION.findall(content)
+def _sections(content: str) -> int:
+    """Return how many `##` sections a README has; headings are translated, so only the count is compared."""
+    return len(SECTION.findall(content))
 
 
 def _images(content: str, prefix: str) -> set:

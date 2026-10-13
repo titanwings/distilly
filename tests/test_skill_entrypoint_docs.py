@@ -46,6 +46,11 @@ BUNDLED_PATH = re.compile(r"\b((?:prompts|tools)/[\w./-]+\.(?:md|py|sh))\b")
 BARE_TOOL_CALL = re.compile(r"(?:python3|bash) \"?tools/")
 ROUTER_MAX_LINES = 80
 RESEARCH_FLOOR = re.compile(r"`([A-Z][\w -]+?) (?:>=|=) \d+`")
+# Section headings each full README uses: (supported hosts, quick start, section after quick start).
+README_HEADINGS = {
+    "README.md": ("## Supported agents", "## Quick start", "## How it works"),
+    "README_ZH.md": ("## 支持的 Agent", "## 快速上手", "## 工作原理"),
+}
 
 
 def _instruction_files() -> dict[str, str]:
@@ -56,8 +61,9 @@ def _instruction_files() -> dict[str, str]:
 
 class SkillEntrypointDocsTest(unittest.TestCase):
     def _assert_readme_support_contract(self, content: str, source: str) -> None:
-        self.assertIn("### 3️⃣", content, f"missing host section in {source}")
-        host_section = content.split("### 3️⃣", 1)[1].split("\n---", 1)[0]
+        hosts_heading = README_HEADINGS[source][0]
+        self.assertIn(hosts_heading, content, f"missing host section in {source}")
+        host_section = content.split(hosts_heading, 1)[1].split("\n## ", 1)[0]
         host_rows = re.findall(r'<img [^>]*alt="([^"]+)"', host_section)
 
         self.assertEqual(list(SUPPORTED_HOSTS), host_rows, f"wrong host list in {source}")
@@ -82,8 +88,9 @@ class SkillEntrypointDocsTest(unittest.TestCase):
     def _assert_readme_quick_start(
         self, content: str, source: str, install_link: str
     ) -> None:
-        self.assertIn("## ⚡", content, f"missing install section in {source}")
-        quick_start = content.split("## ⚡", 1)[1].split("\n## ✨", 1)[0]
+        _, start_heading, next_heading = README_HEADINGS[source]
+        self.assertIn(start_heading, content, f"missing install section in {source}")
+        quick_start = content.split(start_heading, 1)[1].split("\n" + next_heading, 1)[0]
         self.assertIn("### 🤖", quick_start, f"missing Agent path in {source}")
         self.assertIn("### 👤", quick_start, f"missing human path in {source}")
         self.assertIn(
