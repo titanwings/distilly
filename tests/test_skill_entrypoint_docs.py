@@ -141,14 +141,14 @@ class SkillEntrypointDocsTest(unittest.TestCase):
         for content in _instruction_files().values():
             referenced.update(BUNDLED_PATH.findall(content))
         referenced.update(
-            BUNDLED_PATH.findall((ROOT / "tools" / "skill_presets.py").read_text(encoding="utf-8"))
+            BUNDLED_PATH.findall((ROOT / "tools" / "distilly" / "profile" / "presets.py").read_text(encoding="utf-8"))
         )
         for prompt_path in sorted((ROOT / "prompts").rglob("*.md")):
             relative = prompt_path.relative_to(ROOT).as_posix()
             self.assertTrue(relative in referenced, f"nothing loads {relative}")
 
     def test_research_floors_match_merge_summary(self) -> None:
-        summary_source = (ROOT / "tools" / "research" / "merge_research.py").read_text(encoding="utf-8")
+        summary_source = (ROOT / "tools" / "distilly" / "profile" / "research_merge.py").read_text(encoding="utf-8")
         floors = set()
         for content in _instruction_files().values():
             floors.update(RESEARCH_FLOOR.findall(content))
@@ -311,11 +311,11 @@ class SkillEntrypointDocsTest(unittest.TestCase):
             self.assertNotIn(stale_phrase, content, "Chinese phrase in README_JA.md")
 
     def test_code_uses_new_names_with_explicit_legacy_fallbacks(self) -> None:
-        writer = (ROOT / "tools" / "skill_writer.py").read_text(encoding="utf-8")
-        schema = (ROOT / "tools" / "skill_schema.py").read_text(encoding="utf-8")
+        writer = (ROOT / "tools" / "distilly" / "write" / "writer.py").read_text(encoding="utf-8")
+        schema = (ROOT / "tools" / "distilly" / "profile" / "schema.py").read_text(encoding="utf-8")
         host_table = (ROOT / "tools" / "hosts.json").read_text(encoding="utf-8")
         generated_installer = (
-            ROOT / "tools" / "install_generated_skill_common.py"
+            ROOT / "tools" / "distilly" / "install" / "generated.py"
         ).read_text(encoding="utf-8")
 
         self.assertIn("DISTILLY_AUTO_INSTALL_CLAUDE", writer)
@@ -325,16 +325,13 @@ class SkillEntrypointDocsTest(unittest.TestCase):
         self.assertIn('"codex": { "skills_dir": [".agents", "skills"] }', host_table)
         self.assertIn('.distilly-install.json', generated_installer)
 
-        for collector_name in (
-            "feishu_auto_collector.py",
-            "feishu_mcp_client.py",
-            "dingtalk_auto_collector.py",
-            "slack_auto_collector.py",
-        ):
-            collector = (ROOT / "tools" / collector_name).read_text(encoding="utf-8")
-            self.assertIn('Path.home() / ".distilly"', collector)
-            self.assertIn('Path.home() / ".colleague-skill"', collector)
-            self.assertIn("CONFIG_PATH.chmod(0o600)", collector)
+        config_source = (ROOT / "tools" / "distilly" / "core" / "config.py").read_text(encoding="utf-8")
+        self.assertIn('Path.home() / ".distilly"', config_source)
+        self.assertIn('Path.home() / ".colleague-skill"', config_source)
+        self.assertIn("path.chmod(0o600)", config_source)
+        for collector_name in ("feishu/auto.py", "feishu/mcp.py", "dingtalk.py", "slack.py"):
+            collector = (ROOT / "tools" / "distilly" / "collect" / collector_name).read_text(encoding="utf-8")
+            self.assertIn("config_file.config_paths(", collector)
 
 
 if __name__ == "__main__":

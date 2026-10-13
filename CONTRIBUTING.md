@@ -11,7 +11,7 @@ Thank you for considering a contribution! Distilly turns source material about a
 - **Report bugs** — open a [bug report](.github/ISSUE_TEMPLATE/bug_report.md)
 - **Suggest features** — open a [feature request](.github/ISSUE_TEMPLATE/feature_request.md)
 - **Translate docs** — see `docs/lang/` for existing languages
-- **Add a data source collector** — e.g. `tools/slack_auto_collector.py` is a reference implementation
+- **Add a data source collector** — e.g. `tools/distilly/collect/slack.py` is a reference implementation
 - **Submit a community skill** — submit to the [gallery](https://titanwings.github.io/colleague-skill-site/)
 - **Improve prompts** — files under `prompts/` shape skill behavior; small wording tweaks are welcome
 
@@ -67,7 +67,8 @@ Keep the subject under 72 characters. Use the body for the *why*, not the *what*
 
 - Match surrounding code — we don't enforce a formatter yet, but consistency matters
 - Python: prefer standard library where possible; add to `requirements.txt` only if every tool needs it, otherwise to `requirements-optional.txt`
-- Tools under `tools/` should be runnable as standalone CLIs (`if __name__ == "__main__":`)
+- Code lives in the `tools/distilly/` package: `core/` (config, credentials, paths, hosts), `collect/`, `profile/`, `write/` and `install/`. Upper layers may import `core`; `core` imports nothing above it
+- Each command agents or users run keeps a small entry script directly under `tools/` (or `tools/research/`) that forwards to the package. Never rename or remove one; `tests/test_cli_contract.py` checks their options and public names. After an intended option change, regenerate the snapshot as its docstring says
 - Prompts under `prompts/` are plain Markdown — keep them concise and task-specific
 
 ---

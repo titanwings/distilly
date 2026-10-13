@@ -1,0 +1,598 @@
+{
+  "tools/dingtalk_auto_collector.py": {
+    "cli": {
+      "options": [
+        "--check",
+        "--chrome-profile",
+        "--doc-limit",
+        "--help",
+        "--msg-limit",
+        "--name",
+        "--output-dir",
+        "--setup",
+        "--show-browser",
+        "--skip-messages"
+      ]
+    },
+    "api": [
+      "API_BASE",
+      "CONFIG_PATH",
+      "LEGACY_CONFIG_PATH",
+      "api_get",
+      "api_post",
+      "collect_all",
+      "collect_bitables",
+      "collect_docs",
+      "collect_messages_browser",
+      "fetch_bitable_content",
+      "fetch_doc_content",
+      "find_user",
+      "get_access_token",
+      "get_default_chrome_profile",
+      "list_workspaces",
+      "load_config",
+      "main",
+      "save_config",
+      "search_bitables",
+      "search_docs_by_user",
+      "search_users_by_dept",
+      "setup_config"
+    ]
+  },
+  "tools/email_parser.py": {
+    "cli": {
+      "options": [
+        "--file",
+        "--help",
+        "--output",
+        "--target"
+      ]
+    },
+    "api": [
+      "HTMLTextExtractor",
+      "classify_emails",
+      "decode_mime_str",
+      "extract_email_body",
+      "format_output",
+      "is_from_target",
+      "main",
+      "parse_eml_file",
+      "parse_mbox_file",
+      "parse_txt_file"
+    ]
+  },
+  "tools/feishu_auto_collector.py": {
+    "cli": {
+      "options": [
+        "--check",
+        "--doc-limit",
+        "--help",
+        "--login",
+        "--msg-limit",
+        "--name",
+        "--open-id",
+        "--output-dir",
+        "--p2p-chat-id",
+        "--refresh",
+        "--setup"
+      ]
+    },
+    "api": [
+      "BASE_URL",
+      "CONFIG_PATH",
+      "LEGACY_CONFIG_PATH",
+      "OAUTH_REDIRECT_URI",
+      "OAUTH_SCOPE",
+      "api_get",
+      "api_post",
+      "build_authorize_url",
+      "collect_all",
+      "collect_bitable",
+      "collect_docs",
+      "collect_messages",
+      "exchange_code_for_token",
+      "extract_oauth_code",
+      "fetch_doc_content",
+      "fetch_messages_from_chat",
+      "fetch_p2p_messages",
+      "find_user",
+      "get_chats_with_user",
+      "get_tenant_token",
+      "load_config",
+      "login",
+      "main",
+      "refresh_user_token",
+      "save_config",
+      "save_user_token",
+      "search_docs_by_user",
+      "setup_config"
+    ]
+  },
+  "tools/feishu_browser.py": {
+    "cli": {
+      "options": [
+        "--chat",
+        "--chrome-profile",
+        "--headless",
+        "--help",
+        "--limit",
+        "--output",
+        "--show-browser",
+        "--target",
+        "--url"
+      ]
+    },
+    "api": [
+      "detect_page_type",
+      "fetch_doc",
+      "fetch_messages",
+      "fetch_sheet",
+      "get_default_chrome_profile",
+      "main",
+      "make_context"
+    ]
+  },
+  "tools/feishu_mcp_client.py": {
+    "cli": {
+      "options": [
+        "--chat-id",
+        "--check",
+        "--help",
+        "--limit",
+        "--list-wiki",
+        "--output",
+        "--setup",
+        "--space-id",
+        "--target",
+        "--url"
+      ]
+    },
+    "api": [
+      "CONFIG_PATH",
+      "LEGACY_CONFIG_PATH",
+      "call_mcp",
+      "extract_doc_token",
+      "fetch_doc_via_mcp",
+      "fetch_messages_via_mcp",
+      "list_wiki_docs",
+      "load_config",
+      "main",
+      "save_config",
+      "setup_config"
+    ]
+  },
+  "tools/feishu_parser.py": {
+    "cli": {
+      "options": [
+        "--file",
+        "--help",
+        "--output",
+        "--target"
+      ]
+    },
+    "api": [
+      "extract_key_content",
+      "format_output",
+      "main",
+      "parse_feishu_json",
+      "parse_feishu_txt"
+    ]
+  },
+  "tools/install_claude_generated_skill.py": {
+    "cli": {
+      "options": [
+        "--claude-commands-dir",
+        "--claude-skills-dir",
+        "--dry-run",
+        "--force",
+        "--help",
+        "--install-command-shim",
+        "--skill-dir"
+      ]
+    },
+    "api": [
+      "default_claude_commands_dir",
+      "default_claude_skills_dir",
+      "generated_skills_dir",
+      "install_generated_skill",
+      "install_generated_skill_common",
+      "load_generated_meta",
+      "main",
+      "render_installed_markdown",
+      "should_install_command_shim"
+    ]
+  },
+  "tools/install_distilly.py": {
+    "cli": {
+      "options": [
+        "--dest",
+        "--dry-run",
+        "--force",
+        "--help",
+        "--host",
+        "--source"
+      ]
+    },
+    "api": [
+      "HOSTS",
+      "default_destination",
+      "install_skill",
+      "main",
+      "payload_entries",
+      "skills_dir"
+    ]
+  },
+  "tools/install_generated_skill.py": {
+    "cli": {
+      "options": [
+        "--dry-run",
+        "--force",
+        "--help",
+        "--host",
+        "--skill-dir",
+        "--skills-dir"
+      ]
+    },
+    "api": [
+      "HOSTS",
+      "default_skills_dir",
+      "install_generated_skill",
+      "main"
+    ]
+  },
+  "tools/owner_profile.py": {
+    "cli": {
+      "options": [
+        "--help"
+      ],
+      "subcommands": {
+        "save": [
+          "--help",
+          "--max-summary-chars",
+          "--profile"
+        ],
+        "link": [
+          "--dry-run",
+          "--help",
+          "--host",
+          "--max-summary-chars",
+          "--target"
+        ],
+        "unlink": [
+          "--dry-run",
+          "--help",
+          "--host",
+          "--target"
+        ],
+        "where": [
+          "--help"
+        ]
+      }
+    },
+    "api": [
+      "BEGIN_MARKER",
+      "DEFAULT_MAX_SUMMARY_CHARS",
+      "END_MARKER",
+      "HOST_ALIASES",
+      "HOST_SUMMARY_LIMITS",
+      "HOST_USER_FILES",
+      "SECRET_PATTERNS",
+      "SUMMARY_HEADINGS",
+      "apply_block",
+      "check_profile",
+      "extract_summary",
+      "find_secrets",
+      "link_profile",
+      "main",
+      "openclaw_workspace",
+      "owner_home",
+      "render_block",
+      "resolve_host_file",
+      "save_profile",
+      "summary_limit",
+      "timestamp",
+      "unlink_profile",
+      "write_user_file"
+    ]
+  },
+  "tools/owner_sources.py": {
+    "cli": {
+      "options": [
+        "--help"
+      ],
+      "subcommands": {
+        "discover": [
+          "--help",
+          "--json"
+        ],
+        "classify": [
+          "--help"
+        ]
+      }
+    },
+    "api": [
+      "CATEGORIES",
+      "EXPORT_PATTERNS",
+      "classify",
+      "describe",
+      "discover",
+      "home",
+      "main",
+      "mcp_configs",
+      "openclaw_workspace",
+      "render",
+      "skill_dirs",
+      "tokens_of",
+      "user_files"
+    ]
+  },
+  "tools/research/merge_research.py": {
+    "cli": {
+      "options": [
+        "--help"
+      ]
+    },
+    "api": [
+      "CONTRADICTION_SECTIONS",
+      "FINDING_SECTIONS",
+      "GAP_SECTIONS",
+      "INFERENCE_SECTIONS",
+      "METADATA_SECTIONS",
+      "SECTION_PATTERN",
+      "SOURCE_WEIGHT_PATTERN",
+      "TIMESTAMP_PATTERN",
+      "TRACK_PATTERN",
+      "URL_PATTERN",
+      "collect_markdown_files",
+      "collect_source_weight_distribution",
+      "collect_structured_section_metrics",
+      "count_potential_long_quote_lines",
+      "extract_key_findings",
+      "main",
+      "merge_research",
+      "resolve_research_root",
+      "summarize_research_files"
+    ]
+  },
+  "tools/research/quality_check.py": {
+    "cli": {
+      "options": [
+        "--help",
+        "--json",
+        "--profile"
+      ]
+    },
+    "api": [
+      "DEFAULT_RESEARCH_METRICS",
+      "GENERIC_URL_PATHS",
+      "TIMESTAMP_PATTERN",
+      "evaluate_skill_text",
+      "extract_summary_metric",
+      "extract_summary_percentage",
+      "is_copyright_safe_text",
+      "is_source_like_url",
+      "load_research_metrics",
+      "main",
+      "review_status_is_pass"
+    ]
+  },
+  "tools/research/srt_to_transcript.py": {
+    "cli": {
+      "options": [
+        "--help"
+      ]
+    },
+    "api": [
+      "TIMESTAMP_PATTERN",
+      "clean_subtitle_text",
+      "convert_file",
+      "main"
+    ]
+  },
+  "tools/research/transcribe_audio.py": {
+    "cli": {
+      "options": [
+        "--backend",
+        "--help",
+        "--input",
+        "--keep-audio",
+        "--language",
+        "--model",
+        "--output",
+        "--url"
+      ]
+    },
+    "api": [
+      "SUPPORTED_AUDIO_EXT",
+      "SUPPORTED_VIDEO_EXT",
+      "download_audio",
+      "main",
+      "transcribe",
+      "transcribe_with_faster_whisper",
+      "transcribe_with_openai_api",
+      "transcribe_with_openai_whisper"
+    ]
+  },
+  "tools/research/xquik_public_posts.py": {
+    "cli": {
+      "options": [
+        "--force",
+        "--help",
+        "--limit",
+        "--output",
+        "--query",
+        "--sort",
+        "--subject",
+        "--username"
+      ]
+    },
+    "api": [
+      "API_CONTRACT",
+      "API_KEY_ENV",
+      "API_URL",
+      "CollectorError",
+      "DEFAULT_LIMIT",
+      "LANGUAGE_PATTERN",
+      "MAX_CONTENT_CHARS",
+      "MAX_LIMIT",
+      "MAX_QUERY_CHARS",
+      "QUERY_TYPES",
+      "REQUEST_TIMEOUT_SECONDS",
+      "STATUS_PATH_PATTERN",
+      "USERNAME_PATTERN",
+      "build_query",
+      "canonical_post_url",
+      "clean_text",
+      "collect_public_posts",
+      "default_get",
+      "main",
+      "normalize_post",
+      "normalize_timestamp",
+      "request_posts",
+      "safe_count",
+      "validate_limit",
+      "write_collection"
+    ]
+  },
+  "tools/skill_writer.py": {
+    "cli": {
+      "options": [
+        "--action",
+        "--base-dir",
+        "--character",
+        "--claude-commands-dir",
+        "--claude-skills-dir",
+        "--codex-skills-dir",
+        "--correction-json",
+        "--help",
+        "--install-claude-command-shim",
+        "--install-claude-skill",
+        "--install-codex-skill",
+        "--install-openclaw-skill",
+        "--meta",
+        "--name",
+        "--no-install-claude-skill",
+        "--openclaw-skills-dir",
+        "--persona",
+        "--persona-patch",
+        "--research-profile",
+        "--slug",
+        "--type",
+        "--work",
+        "--work-patch"
+      ]
+    },
+    "api": [
+      "MAX_SLUG_LENGTH",
+      "PRIMARY_ARTIFACTS",
+      "SECTION_HEADING_RE",
+      "SKILL_MD_TEMPLATE_EN",
+      "SKILL_MD_TEMPLATE_ZH",
+      "SLUG_PATTERN",
+      "WORK_ONLY_FALLBACK_EN",
+      "WORK_ONLY_FALLBACK_ZH",
+      "apply_correction",
+      "backup_current_artifacts",
+      "build_identity_string",
+      "build_manifest",
+      "create_skill",
+      "enrich_existing_skill_meta",
+      "enrich_skill_meta",
+      "get_character_preset",
+      "install_generated_hosts",
+      "language_code",
+      "list_skills",
+      "main",
+      "merge_markdown_patch",
+      "normalize_character",
+      "normalize_command_slug",
+      "normalize_corrections",
+      "normalize_research_profile",
+      "normalize_skill_character",
+      "now_iso",
+      "prefers_chinese",
+      "render_combined_skill",
+      "render_persona_skill",
+      "render_work_skill",
+      "resolve_base_dir",
+      "resolve_contained_child",
+      "resolve_existing_storage_root",
+      "resolve_storage_root",
+      "slugify",
+      "sync_legacy_fields",
+      "update_skill",
+      "validate_path_segment",
+      "validate_slug",
+      "work_only_content",
+      "write_artifacts"
+    ]
+  },
+  "tools/slack_auto_collector.py": {
+    "cli": {
+      "options": [
+        "--channel-limit",
+        "--check",
+        "--help",
+        "--msg-limit",
+        "--name",
+        "--output-dir",
+        "--setup"
+      ]
+    },
+    "api": [
+      "CHANNEL_TYPES",
+      "CONFIG_PATH",
+      "DEFAULT_CHANNEL_LIMIT",
+      "DEFAULT_MSG_LIMIT",
+      "LEGACY_CONFIG_PATH",
+      "MAX_RETRIES",
+      "RETRY_BASE_WAIT",
+      "RETRY_MAX_WAIT",
+      "RateLimitedClient",
+      "SlackAuthError",
+      "SlackCollectorError",
+      "SlackScopeError",
+      "collect_all",
+      "collect_messages",
+      "fetch_messages_from_channel",
+      "find_user",
+      "get_channels_with_user",
+      "load_config",
+      "main",
+      "save_config",
+      "setup_config"
+    ]
+  },
+  "tools/version_manager.py": {
+    "cli": {
+      "options": [
+        "--action",
+        "--base-dir",
+        "--character",
+        "--help",
+        "--slug",
+        "--type",
+        "--version"
+      ]
+    },
+    "api": [
+      "MAX_VERSIONS",
+      "PRIMARY_ARTIFACTS",
+      "backup_artifacts",
+      "backup_current_version",
+      "cleanup_old_versions",
+      "enrich_existing_skill_meta",
+      "list_versions",
+      "main",
+      "normalize_character",
+      "now_iso",
+      "resolve_base_dir",
+      "resolve_contained_child",
+      "resolve_existing_storage_root",
+      "resolve_versions_dir",
+      "rollback",
+      "sync_legacy_fields",
+      "validate_path_segment"
+    ]
+  }
+}
