@@ -602,9 +602,9 @@ def collect_messages_browser(
         time.sleep(2)
 
         # 提取消息
-        raw_messages = page.evaluate(f"""
-            () => {{
-                const target = "{name}";
+        raw_messages = page.evaluate("""
+            (args) => {
+                const target = args.target;
                 const results = [];
                 const selectors = [
                     '.message-item-content-container',
@@ -614,12 +614,12 @@ def collect_messages_browser(
                 ];
 
                 let items = [];
-                for (const sel of selectors) {{
+                for (const sel of selectors) {
                     items = document.querySelectorAll(sel);
                     if (items.length > 0) break;
-                }}
+                }
 
-                items.forEach(item => {{
+                items.forEach(item => {
                     const senderEl = item.querySelector('.sender-name, .nick-name, .name');
                     const contentEl = item.querySelector(
                         '.message-text, .text-content, .msg-content, .im-richtext'
@@ -634,12 +634,12 @@ def collect_messages_browser(
                     if (target && !sender.includes(target)) return;
                     if (['[图片]','[文件]','[表情]','[语音]'].includes(content)) return;
 
-                    results.push({{ sender, content, time }});
-                }});
+                    results.push({ sender, content, time });
+                });
 
-                return results.slice(-{msg_limit});
-            }}
-        """)
+                return results.slice(-args.limit);
+            }
+        """, {"target": name, "limit": msg_limit})
 
         ctx.close()
         messages = raw_messages or []
