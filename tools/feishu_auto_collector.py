@@ -46,6 +46,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 import time
@@ -80,9 +81,12 @@ def load_config() -> dict:
 
 
 def save_config(config: dict) -> None:
-    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    CONFIG_PATH.write_text(json.dumps(config, indent=2, ensure_ascii=False))
-    CONFIG_PATH.chmod(0o600)
+    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    os.chmod(CONFIG_PATH.parent, 0o700)
+    fd = os.open(CONFIG_PATH, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(json.dumps(config, indent=2, ensure_ascii=False))
+    os.chmod(CONFIG_PATH, 0o600)
 
 
 def setup_config() -> None:
@@ -926,7 +930,8 @@ def collect_all(
     config: dict,
 ) -> dict:
     """采集某同事的所有可用数据，输出到 output_dir"""
-    output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    os.chmod(output_dir, 0o700)
     results = {}
 
     print(f"\n🔍 开始采集：{name}\n", file=sys.stderr)
@@ -942,7 +947,10 @@ def collect_all(
     try:
         msg_content = collect_messages(user, msg_limit, config)
         msg_path = output_dir / "messages.txt"
-        msg_path.write_text(msg_content, encoding="utf-8")
+        fd = os.open(msg_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(msg_content)
+        os.chmod(msg_path, 0o600)
         results["messages"] = str(msg_path)
         print(f"  ✅ 消息记录 → {msg_path}", file=sys.stderr)
     except Exception as e:
@@ -953,7 +961,10 @@ def collect_all(
     try:
         doc_content = collect_docs(user, doc_limit, config)
         doc_path = output_dir / "docs.txt"
-        doc_path.write_text(doc_content, encoding="utf-8")
+        fd = os.open(doc_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(doc_content)
+        os.chmod(doc_path, 0o600)
         results["docs"] = str(doc_path)
         print(f"  ✅ 文档内容 → {doc_path}", file=sys.stderr)
     except Exception as e:
@@ -968,9 +979,11 @@ def collect_all(
         "collected_at": datetime.now(timezone.utc).isoformat(),
         "files": results,
     }
-    (output_dir / "collection_summary.json").write_text(
-        json.dumps(summary, ensure_ascii=False, indent=2)
-    )
+    summary_path = output_dir / "collection_summary.json"
+    fd = os.open(summary_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(json.dumps(summary, ensure_ascii=False, indent=2))
+    os.chmod(summary_path, 0o600)
 
     print(f"\n✅ 采集完成，输出目录：{output_dir}", file=sys.stderr)
     return results
@@ -1037,14 +1050,18 @@ def main() -> None:
     # 如果提供了 open_id，跳过用户搜索
     if args.open_id:
         user = {"open_id": args.open_id, "name": args.name or "target"}
-        output_dir.mkdir(parents=True, exist_ok=True)
+        output_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+        os.chmod(output_dir, 0o700)
         print(f"\n🔍 使用指定 open_id: {args.open_id}\n", file=sys.stderr)
 
         # 只采集消息
         print(f"📨 采集消息记录（上限 {args.msg_limit} 条）...", file=sys.stderr)
         msg_content = collect_messages(user, args.msg_limit, config)
         msg_path = output_dir / "messages.txt"
-        msg_path.write_text(msg_content, encoding="utf-8")
+        fd = os.open(msg_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(msg_content)
+        os.chmod(msg_path, 0o600)
         print(f"  ✅ 消息记录 → {msg_path}", file=sys.stderr)
         return
 
