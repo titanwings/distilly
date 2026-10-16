@@ -66,6 +66,7 @@ def load_config() -> dict:
 
 def save_config(config: dict) -> None:
     CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    CONFIG_PATH.parent.chmod(0o700)
     CONFIG_PATH.write_text(json.dumps(config, indent=2, ensure_ascii=False))
     CONFIG_PATH.chmod(0o600)
 

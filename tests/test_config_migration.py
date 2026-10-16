@@ -42,6 +42,7 @@ class ConfigMigrationTest(unittest.TestCase):
                     {"source": "distilly"},
                 )
                 self.assertEqual(stat.S_IMODE(current.stat().st_mode), 0o600)
+                self.assertEqual(stat.S_IMODE(current.parent.stat().st_mode), 0o700)
 
 
 if __name__ == "__main__":

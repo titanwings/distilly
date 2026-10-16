@@ -88,7 +88,7 @@ Don't hit live APIs in CI. Mock with `unittest.mock` or the `responses` library.
 ## Security
 
 - **Never commit secrets, tokens, or personal data.** If you accidentally do, rotate the credential immediately and let a maintainer know.
-- Config files that hold credentials should be written to the user's home under `~/.distilly/` with permission `0600`; readers may keep a read-only fallback for legacy `~/.colleague-skill/` files.
+- Config files that hold credentials should be written to the user's home under `~/.distilly/` with permission `0600`, and the `~/.distilly/` directory itself must be `0700`; readers may keep a read-only fallback for legacy `~/.colleague-skill/` files.
 - If you find a security issue, **do not open a public issue.** Email the maintainer or DM on Discord.
 
 ---
