@@ -11,6 +11,19 @@ from research.srt_to_transcript import clean_subtitle_text, convert_file
 
 
 class SubtitleTranscriptTest(unittest.TestCase):
+    def test_webvtt_discards_note_blocks_but_preserves_cue_text(self) -> None:
+        subtitle = "\r\n".join((
+            "\ufeffWEBVTT", "", "NOTE editor comment", "still a comment", "",
+            "00:00:01.000 --> 00:00:02.000", "NOTE take two.", "",
+            "00:00:02.000 --> 00:00:03.000", "NOTEWORTHY line.", "",
+            "NOTE", "trailing comment without a blank line",
+        ))
+        self.assertEqual(clean_subtitle_text(subtitle), "NOTE take two.\n\nNOTEWORTHY line.")
+
+    def test_srt_preserves_spoken_note(self) -> None:
+        subtitle = "1\n00:00:01,000 --> 00:00:02,000\nNOTE take two.\n\n"
+        self.assertEqual(clean_subtitle_text(subtitle), "NOTE take two.")
+
     def test_clean_subtitle_text_removes_timestamps_and_duplicates(self) -> None:
         subtitle = """WEBVTT
 
