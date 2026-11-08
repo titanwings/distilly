@@ -67,17 +67,23 @@ def decode_mime_str(s: str) -> str:
     return "".join(result)
 
 
+def _inline_body_parts(msg):
+    if msg.get_content_disposition() == "attachment":
+        return
+    if msg.is_multipart() and msg.get_content_maintype() == "multipart":
+        for part in msg.get_payload():
+            yield from _inline_body_parts(part)
+    elif msg.get_content_type() in {"text/plain", "text/html"}:
+        yield msg
+
+
 def extract_email_body(msg) -> str:
     """从邮件对象中提取正文文本"""
     body = ""
 
     if msg.is_multipart():
-        for part in msg.walk():
+        for part in _inline_body_parts(msg):
             content_type = part.get_content_type()
-            disposition = str(part.get("Content-Disposition", ""))
-
-            if "attachment" in disposition:
-                continue
 
             if content_type == "text/plain":
                 payload = part.get_payload(decode=True)
