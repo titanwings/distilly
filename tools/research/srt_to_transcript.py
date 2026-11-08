@@ -14,9 +14,15 @@ TIMESTAMP_PATTERN = re.compile(
 
 
 def _strip_vtt_headers(content: str) -> str:
-    content = re.sub(r"^WEBVTT.*?(?:\n\n|\r\n\r\n)", "", content, flags=re.DOTALL)
-    content = re.sub(r"^NOTE.*?(?:\n\n|\r\n\r\n)", "", content, flags=re.DOTALL | re.MULTILINE)
-    return content
+    content = content.removeprefix("\ufeff")
+    lines = content.splitlines()
+    if not lines or not re.match(r"^WEBVTT(?:[ \t]|$)", lines[0]):
+        return content
+
+    blocks = re.split(r"\n(?:[ \t]*\n)+", "\n".join(lines))
+    return "\n\n".join(
+        block for block in blocks[1:] if not re.match(r"^NOTE(?:[ \t\n]|$)", block)
+    )
 
 
 def clean_subtitle_text(content: str) -> str:
